@@ -20,3 +20,10 @@ export const OFFLINE_EFFICIENCY = 0.5
 // 오프라인 지급 최소 경과(ms). 이 미만이면 팝업도 지급도 생략한다(60초).
 // 짧은 부재는 무시(로드 시 lastTick을 now로 당기므로 별도 catch-up 없음) — 단순·안전 우선.
 export const OFFLINE_MIN_MS = 60_000
+
+// --- 각성/프레스티지 (T5.1, DESIGN.md §2.5) ---
+// 각성 임계값: 이번 생 누적 마나가 이 값 이상이어야 각성 가능(1e9).
+// 스타더스트 = floor(sqrt(누적 마나 / PRESTIGE_THRESHOLD))의 분모이기도 하다.
+export const PRESTIGE_THRESHOLD = 1e9
+// 스타더스트 1개당 전체 생산 배율 증가분(+10% → 0.1). 배율 = 1 + stardust × 이 값.
+export const STARDUST_MULT_PER = 0.1

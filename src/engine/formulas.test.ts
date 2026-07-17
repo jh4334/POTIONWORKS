@@ -7,6 +7,8 @@ import {
   generatorMultiplier,
   clickPower,
   isUpgradeUnlocked,
+  stardustFor,
+  stardustMultiplier,
 } from './formulas.ts'
 import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
@@ -156,6 +158,43 @@ describe('totalMps', () => {
   it('시너지: a 10개 → b 생산 +10%', () => {
     // b 배율 (1 + 10 * 1/100) = 1.1 → 3 * 1 * 1.1 = 3.3, a는 10*0.1 = 1
     expect(totalMps({ a: 10, b: 3 }, gens, [synergy('a', 'b', 1)])).toBeCloseTo(1 + 3.3)
+  })
+
+  it('스타더스트 배율은 전체에 한 번만 곱한다', () => {
+    const base = 10 * 0.1 + 3 * 1 // 4
+    // 미지정=1(기존과 동일), 1.1배, 2배
+    expect(totalMps({ a: 10, b: 3 }, gens, [])).toBeCloseTo(base)
+    expect(totalMps({ a: 10, b: 3 }, gens, [], 1)).toBeCloseTo(base)
+    expect(totalMps({ a: 10, b: 3 }, gens, [], 1.1)).toBeCloseTo(base * 1.1)
+    expect(totalMps({ a: 10, b: 3 }, gens, [], 2)).toBeCloseTo(base * 2)
+  })
+})
+
+describe('stardustFor', () => {
+  it('임계(1e9) 미만이면 0', () => {
+    expect(stardustFor(0)).toBe(0)
+    expect(stardustFor(5e8)).toBe(0)
+    expect(stardustFor(1e9 - 1)).toBe(0)
+  })
+
+  it('정확히 1e9 → 1, 4e9 → 2, 9e9 → 3', () => {
+    expect(stardustFor(1e9)).toBe(1)
+    expect(stardustFor(4e9)).toBe(2)
+    expect(stardustFor(9e9)).toBe(3)
+  })
+
+  it('제곱 경계 사이는 아래 정수로 내림', () => {
+    // 3.9e9 → sqrt(3.9)=1.97 → 1, 8.9e9 → sqrt(8.9)=2.98 → 2
+    expect(stardustFor(3.9e9)).toBe(1)
+    expect(stardustFor(8.9e9)).toBe(2)
+  })
+})
+
+describe('stardustMultiplier', () => {
+  it('0개면 1.0, 1개면 1.1, 10개면 2.0', () => {
+    expect(stardustMultiplier(0)).toBeCloseTo(1.0)
+    expect(stardustMultiplier(1)).toBeCloseTo(1.1)
+    expect(stardustMultiplier(10)).toBeCloseTo(2.0)
   })
 })
 

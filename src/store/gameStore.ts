@@ -1,12 +1,18 @@
 import { create } from 'zustand'
-import { INITIAL_CLICK_POWER } from '../data/config.ts'
+import { INITIAL_CLICK_POWER, PRESTIGE_THRESHOLD } from '../data/config.ts'
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES, resolveUpgrades } from '../data/upgrades.ts'
-import { bulkCost, totalMps, clickPower as computeClickPower, isUpgradeUnlocked } from '../engine/formulas.ts'
+import {
+  bulkCost,
+  totalMps,
+  clickPower as computeClickPower,
+  isUpgradeUnlocked,
+  stardustFor,
+  stardustMultiplier,
+} from '../engine/formulas.ts'
 import { clearSave, type SaveData } from '../engine/save.ts'
 
 // 규칙(CLAUDE.md): 상태 변형은 이 스토어의 액션에서만, 컴포넌트는 selector로 부분 구독.
-// 각성 액션은 이후 태스크(T5.1)에서 추가된다.
 
 // 구매 수량 토글 — 모든 시설 행이 공유하므로 UI 상태지만 스토어에 둔다.
 export type BuyAmount = 1 | 10 | 'max'
@@ -28,9 +34,16 @@ export interface GameState {
   upgrades: string[] // 구매한 업그레이드 id 목록
   lastTick: number // epoch ms — 시간 계산의 진실
   buyAmount: BuyAmount
+  // 각성(T5.1) — 이번 생 누적 획득 마나. 클릭/tick/오프라인으로 증가만, 소비(구매)로는 안 줄어든다.
+  // 각성 보상 stardustFor(lifetimeMana)의 입력이자 각성 가능 판정 기준. 각성 시 0으로 리셋.
+  lifetimeMana: number
+  // 각성으로 누적한 스타더스트(영구). 전체 MPS에 stardustMultiplier로 반영. 각성해도 유지.
+  stardust: number
+  // 총 각성 횟수(통계). 각성해도 유지.
+  totalPrestiges: number
   // 오프라인 수익 팝업(세이브 비포함 UI 상태). null이면 팝업 없음.
   offlineGain: OfflineGain | null
-  // 솥 클릭: 마나를 clickPower만큼 증가.
+  // 솥 클릭: 마나를 clickPower만큼 증가(누적 마나도 함께).
   click: () => void
   // 시설 구매: 비용 확인 후 마나 차감 + 보유 증가 + 파생값 재계산.
   buyGenerator: (id: string, count: number) => void
@@ -48,6 +61,10 @@ export interface GameState {
   applyOfflineEarnings: (amount: number, now: number, elapsedMs: number) => void
   // 오프라인 팝업 닫기.
   dismissOffline: () => void
+  // 각성(T5.1): 조건(lifetimeMana >= 임계) 충족 시 stardust += stardustFor(lifetimeMana),
+  //   totalPrestiges += 1, 그리고 마나/시설/업그레이드/buyAmount/lifetimeMana 초기화.
+  //   유지: stardust, totalPrestiges. 리셋 후 파생값(MPS·clickPower) 재계산.
+  prestige: () => void
 }
 
 function initialGenerators(): Record<string, number> {
@@ -78,27 +95,34 @@ function createInitialState() {
     upgrades: [] as string[],
     lastTick: Date.now(),
     buyAmount: 1 as BuyAmount,
+    lifetimeMana: 0,
+    stardust: 0,
+    totalPrestiges: 0,
     offlineGain: null as OfflineGain | null,
   }
 }
 
-// 파생값(MPS·clickPower) 일괄 재계산. buyGenerator/buyUpgrade 공통.
+// 파생값(MPS·clickPower) 일괄 재계산. buyGenerator/buyUpgrade/prestige/loadSave 공통.
 // clickPower는 MPS에 의존하므로 항상 함께 계산해 캐시를 일관되게 유지한다.
-// (MPS·clickPower 모두 generators/upgrades 변경 시에만 바뀌고 tick에서는 불변.)
+// (MPS·clickPower 모두 generators/upgrades/stardust 변경 시에만 바뀌고 tick에서는 불변.)
+// MPS에는 stardust 영구 배율을 곱한다. clickPower에는 적용하지 않는다(MPS 기반 클릭 강화로 간접 수혜).
 function recalcDerived(
   generators: Record<string, number>,
   upgradeIds: string[],
   basePower: number,
+  stardust: number,
 ): { manaPerSecond: number; clickPower: number } {
   const ups = resolveUpgrades(upgradeIds)
-  const manaPerSecond = totalMps(generators, GENERATORS, ups)
+  const manaPerSecond = totalMps(generators, GENERATORS, ups, stardustMultiplier(stardust))
   return { manaPerSecond, clickPower: computeClickPower(basePower, manaPerSecond, ups) }
 }
 
 export const useGameStore = create<GameState>()((set) => ({
   ...createInitialState(),
 
-  click: () => set((s) => ({ mana: s.mana + s.clickPower })),
+  // 클릭 획득은 소비되지 않는 순수 획득 — lifetimeMana(각성 기준)도 같이 늘린다.
+  click: () =>
+    set((s) => ({ mana: s.mana + s.clickPower, lifetimeMana: s.lifetimeMana + s.clickPower })),
 
   buyGenerator: (id, count) =>
     set((s) => {
@@ -112,7 +136,7 @@ export const useGameStore = create<GameState>()((set) => ({
       return {
         mana: s.mana - cost,
         generators,
-        ...recalcDerived(generators, s.upgrades, s.basePower),
+        ...recalcDerived(generators, s.upgrades, s.basePower, s.stardust),
       }
     }),
 
@@ -128,7 +152,7 @@ export const useGameStore = create<GameState>()((set) => ({
       return {
         mana: s.mana - def.cost,
         upgrades,
-        ...recalcDerived(s.generators, upgrades, s.basePower),
+        ...recalcDerived(s.generators, upgrades, s.basePower, s.stardust),
       }
     }),
 
@@ -138,8 +162,10 @@ export const useGameStore = create<GameState>()((set) => ({
     set((s) => {
       const elapsedMs = now - s.lastTick
       if (elapsedMs <= 0) return s // 시계 역행·중복 호출 무시
+      const gained = s.manaPerSecond * (elapsedMs / 1000)
       return {
-        mana: s.mana + s.manaPerSecond * (elapsedMs / 1000),
+        mana: s.mana + gained,
+        lifetimeMana: s.lifetimeMana + gained, // 생산 획득도 누적 마나에 반영
         lastTick: now,
       }
     }),
@@ -160,7 +186,10 @@ export const useGameStore = create<GameState>()((set) => ({
         // (오프라인 수익은 applyOfflineEarnings가 savedAt 기준으로 별도 지급.)
         lastTick: Date.now(),
         buyAmount: st.buyAmount,
-        ...recalcDerived(generators, upgrades, st.basePower),
+        lifetimeMana: st.lifetimeMana,
+        stardust: st.stardust,
+        totalPrestiges: st.totalPrestiges,
+        ...recalcDerived(generators, upgrades, st.basePower, st.stardust),
       }
     }),
 
@@ -172,9 +201,35 @@ export const useGameStore = create<GameState>()((set) => ({
   applyOfflineEarnings: (amount, now, elapsedMs) =>
     set((s) => ({
       mana: s.mana + amount,
+      lifetimeMana: s.lifetimeMana + amount, // 오프라인 획득도 누적 마나에 반영
       lastTick: now, // 이중 지급 금지: 오프라인으로 인정한 구간을 tick이 또 세지 않게 한다.
       offlineGain: { amount, elapsedMs },
     })),
 
   dismissOffline: () => set({ offlineGain: null }),
+
+  // 각성: 이번 생 누적 마나로 스타더스트를 얻고 진행을 초기화한다.
+  // 조건 미달(lifetimeMana < 임계 또는 보상 0)이면 아무것도 하지 않는다(UI에서도 막지만 방어).
+  prestige: () =>
+    set((s) => {
+      if (s.lifetimeMana < PRESTIGE_THRESHOLD) return s
+      const gained = stardustFor(s.lifetimeMana)
+      if (gained <= 0) return s
+      const stardust = s.stardust + gained
+      // 리셋: 마나/시설/업그레이드/buyAmount/lifetimeMana/clickPower(basePower). 유지: stardust, totalPrestiges.
+      const generators = initialGenerators()
+      const upgrades: string[] = []
+      return {
+        mana: 0,
+        lifetimeMana: 0,
+        generators,
+        upgrades,
+        basePower: INITIAL_CLICK_POWER,
+        buyAmount: 1 as BuyAmount,
+        stardust,
+        totalPrestiges: s.totalPrestiges + 1,
+        lastTick: Date.now(),
+        ...recalcDerived(generators, upgrades, INITIAL_CLICK_POWER, stardust),
+      }
+    }),
 }))

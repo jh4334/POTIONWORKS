@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import Header from './components/Header.tsx'
 import ClickerPanel from './components/ClickerPanel.tsx'
+import PrestigeModal from './components/PrestigeModal.tsx'
 import UpgradePanel from './components/UpgradePanel.tsx'
 import GeneratorList from './components/GeneratorList.tsx'
 import OfflineModal from './components/OfflineModal.tsx'
@@ -18,6 +19,7 @@ export default function App() {
       <main className="layout">
         <section className="layout-left">
           <ClickerPanel />
+          <PrestigeModal />
         </section>
         <section className="layout-right">
           <UpgradePanel />

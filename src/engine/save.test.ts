@@ -27,6 +27,9 @@ function makeState(): SaveState {
     upgrades: [KNOWN_UP],
     lastTick: 999,
     buyAmount: 10,
+    lifetimeMana: 5678.9,
+    stardust: 4,
+    totalPrestiges: 2,
   }
 }
 
@@ -96,6 +99,54 @@ describe('migrate', () => {
   it('잘못된 buyAmount는 기본 1로 정규화', () => {
     const out = migrate({ version: 1, savedAt: 1, state: { ...validState(), buyAmount: 99 } })
     expect(out!.state.buyAmount).toBe(1)
+  })
+
+  it('v1→v2: 각성 필드가 없으면 lifetimeMana=mana, stardust=0, totalPrestiges=0', () => {
+    // 각성 필드가 전혀 없는 v1 세이브.
+    const v1 = {
+      version: 1,
+      savedAt: FIXED_NOW,
+      state: { mana: 4200, basePower: 1, lastTick: 5, buyAmount: 1, generators: {}, upgrades: [] },
+    }
+    const out = migrate(v1)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 2로 승격
+    expect(out!.state.lifetimeMana).toBe(4200) // 보수적: 현재 마나까지는 벌었다고 간주
+    expect(out!.state.stardust).toBe(0)
+    expect(out!.state.totalPrestiges).toBe(0)
+  })
+
+  it('v2 세이브는 각성 필드를 그대로 채택', () => {
+    const v2 = {
+      version: 2,
+      savedAt: FIXED_NOW,
+      state: {
+        mana: 100,
+        basePower: 1,
+        lastTick: 5,
+        buyAmount: 1,
+        generators: {},
+        upgrades: [],
+        lifetimeMana: 999_999,
+        stardust: 7,
+        totalPrestiges: 3,
+      },
+    }
+    const out = migrate(v2)
+    expect(out!.state.lifetimeMana).toBe(999_999)
+    expect(out!.state.stardust).toBe(7)
+    expect(out!.state.totalPrestiges).toBe(3)
+  })
+
+  it('v2에서 각성 필드가 손상되면 안전한 fallback(lifetimeMana=mana, 나머지 0)', () => {
+    const out = migrate({
+      version: 2,
+      savedAt: 1,
+      state: { ...validState(), mana: 50, lifetimeMana: -1, stardust: NaN, totalPrestiges: 'x' },
+    })
+    expect(out!.state.lifetimeMana).toBe(50)
+    expect(out!.state.stardust).toBe(0)
+    expect(out!.state.totalPrestiges).toBe(0)
   })
 })
 

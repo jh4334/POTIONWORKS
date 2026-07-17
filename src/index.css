@@ -57,6 +57,14 @@ body {
   color: var(--text-dim);
 }
 
+/* T5.1 각성 재화 표시 — stardust>0 또는 각성 가능할 때만 노출. */
+.header-stardust {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffd76a;
+  cursor: default;
+}
+
 /* T4.1/T4.2 헤더 액션(저장·백업) */
 .header-actions {
   display: flex;
@@ -204,8 +212,10 @@ body {
 
 .layout-left {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 24px;
   padding: 24px;
 }
 
@@ -340,6 +350,55 @@ body {
 .upgrade-card.can-afford:hover .upgrade-card-desc,
 .upgrade-card.can-afford:hover .upgrade-card-cost {
   color: var(--text);
+}
+
+/* T5.1 각성 패널 — 클릭 패널 하단. */
+.prestige-panel {
+  width: 220px;
+  text-align: center;
+}
+
+.prestige-button {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #2a1e08;
+  background: linear-gradient(135deg, #ffe08a, #ffb648);
+  border: 1px solid #ffd76a;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(255, 200, 90, 0.5);
+  transition: filter 0.1s ease, transform 0.05s ease;
+}
+
+.prestige-button:hover {
+  filter: brightness(1.08);
+}
+
+.prestige-button:active {
+  transform: scale(0.97);
+}
+
+.prestige-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.prestige-progress-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.prestige-progress-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
 }
 
 .generator-list-head {

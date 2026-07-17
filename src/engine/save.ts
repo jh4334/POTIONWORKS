@@ -10,7 +10,8 @@ import { UPGRADES } from '../data/upgrades.ts'
 import type { BuyAmount } from '../store/gameStore.ts'
 
 // 세이브 스키마 버전. 필드 구조를 바꾸면 올리고 migrate에 단계 추가.
-export const SAVE_VERSION = 1
+// v2(T5.1): 각성 필드(lifetimeMana/stardust/totalPrestiges) 추가.
+export const SAVE_VERSION = 2
 
 // 직렬화 대상(진실만). 파생값은 제외.
 export interface SaveState {
@@ -20,6 +21,10 @@ export interface SaveState {
   upgrades: string[]
   lastTick: number
   buyAmount: BuyAmount
+  // 각성(v2). lifetimeMana=이번 생 누적 획득 마나, stardust=영구 배율 재화, totalPrestiges=각성 횟수.
+  lifetimeMana: number
+  stardust: number
+  totalPrestiges: number
 }
 
 export interface SaveData {
@@ -45,6 +50,9 @@ export function toSaveData(state: SaveState, now: number = Date.now()): SaveData
       upgrades: [...state.upgrades],
       lastTick: now, // 저장 시점으로 갱신
       buyAmount: state.buyAmount,
+      lifetimeMana: state.lifetimeMana,
+      stardust: state.stardust,
+      totalPrestiges: state.totalPrestiges,
     },
   }
 }
@@ -74,6 +82,11 @@ function normalizeBuyAmount(v: unknown): BuyAmount {
   return v === 10 || v === 'max' ? v : 1
 }
 
+// 유한한 0 이상 수치만 채택, 그 외(누락·NaN·음수)는 fallback.
+function normalizeNonNeg(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback
+}
+
 // generators 정규화: 알려진 id + 유한한 0 이상 수치만 채택.
 function normalizeGenerators(v: unknown): Record<string, number> {
   const out: Record<string, number> = {}
@@ -96,9 +109,10 @@ function normalizeUpgrades(v: unknown): string[] {
   return [...seen]
 }
 
-// 버전별 마이그레이션 자리. 현재는 v1 검증만: 필수 필드 존재/타입 체크.
+// 버전별 마이그레이션. 필수 필드 존재/타입 체크 후 최신(v2) 형태로 끌어올린다.
 // 실패 시 null(콘솔 경고). 알 수 없는 generator/upgrade id는 무시하고 로드한다.
-// 향후 스키마 변경 시: raw.version을 보고 단계적으로 최신 형태로 끌어올린 뒤 반환.
+// v1→v2: 각성 필드가 없으므로 lifetimeMana=mana(보수적: 현재 마나까지는 벌었다고 간주),
+//   stardust=0, totalPrestiges=0으로 초기화한다.
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
     console.warn('[save] 세이브가 객체가 아닙니다 — 무시합니다.')
@@ -133,6 +147,13 @@ export function migrate(raw: unknown): SaveData | null {
     return null
   }
 
+  // v1엔 각성 필드가 없다 → lifetimeMana는 mana로 보수적 초기화, stardust/totalPrestiges는 0.
+  // v2 이상은 저장된 값을 검증해 채택(누락·손상 시 동일 fallback).
+  const isV2Plus = raw.version >= 2
+  const lifetimeMana = isV2Plus ? normalizeNonNeg(s.lifetimeMana, s.mana) : s.mana
+  const stardust = isV2Plus ? normalizeNonNeg(s.stardust, 0) : 0
+  const totalPrestiges = isV2Plus ? normalizeNonNeg(s.totalPrestiges, 0) : 0
+
   return {
     version: SAVE_VERSION,
     savedAt: raw.savedAt,
@@ -143,6 +164,9 @@ export function migrate(raw: unknown): SaveData | null {
       upgrades: normalizeUpgrades(s.upgrades),
       lastTick: s.lastTick,
       buyAmount: normalizeBuyAmount(s.buyAmount),
+      lifetimeMana,
+      stardust,
+      totalPrestiges,
     },
   }
 }

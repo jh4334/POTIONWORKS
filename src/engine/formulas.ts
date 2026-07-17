@@ -2,6 +2,7 @@
 // 비용 곡선 버그는 세이브를 오염시키므로 formulas.test.ts로 경계값을 고정한다.
 import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
+import { PRESTIGE_THRESHOLD, STARDUST_MULT_PER } from '../data/config.ts'
 
 // ceil 정책: 비용은 항상 정수로 올림한다(표시·구매 동일 값).
 // 단건 구매 가격 = baseCost × 1.15^보유수.
@@ -60,18 +61,32 @@ export function generatorMultiplier(
   return mult
 }
 
-// 전체 MPS = Σ (보유수 × 개당 baseMps × 티어 배율).
+// 전체 MPS = Σ (보유수 × 개당 baseMps × 티어 배율) × 스타더스트 배율.
 // purchasedUpgrades 미지정(기본 [])이면 배율 1 — 업그레이드 없을 때 기존 값과 동일.
+// stardustMult 미지정(기본 1)이면 각성 배율 없음 — 각성 전과 동일. 전체에 한 번만 곱한다.
 export function totalMps(
   counts: Record<string, number>,
   generators: GeneratorDef[],
   purchasedUpgrades: UpgradeDef[] = [],
+  stardustMult: number = 1,
 ): number {
   let total = 0
   for (const g of generators) {
     total += (counts[g.id] ?? 0) * g.baseMps * generatorMultiplier(g.id, purchasedUpgrades, counts)
   }
-  return total
+  return total * stardustMult
+}
+
+// 각성 보상: 이번 생 누적 마나로 얻는 스타더스트 = floor(sqrt(누적 마나 / 임계값)).
+// 임계 미만이면 0(sqrt<1의 floor). 정확히 임계면 1, 4배면 2, 9배면 3 …
+export function stardustFor(lifetimeMana: number): number {
+  if (lifetimeMana < PRESTIGE_THRESHOLD) return 0
+  return Math.floor(Math.sqrt(lifetimeMana / PRESTIGE_THRESHOLD))
+}
+
+// 스타더스트 영구 배율 = 1 + stardust × 개당 증가분. 0개면 1.0(배율 없음).
+export function stardustMultiplier(stardust: number): number {
+  return 1 + stardust * STARDUST_MULT_PER
 }
 
 // 클릭당 획득량 = 기본 클릭력 + MPS × (clickMpsPercent 합 / 100).
