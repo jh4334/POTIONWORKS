@@ -17,8 +17,10 @@ export const COST_GROWTH = 1.15
 export const GENERATORS: GeneratorDef[] = [
   { id: 'apprentice', tier: 1, name: '견습생', icon: '🧙', baseCost: 15, baseMps: 0.1 },
   { id: 'cauldron', tier: 2, name: '마법 솥', icon: '⚗️', baseCost: 100, baseMps: 1 },
-  { id: 'herbGarden', tier: 3, name: '허브 정원', icon: '🌿', baseCost: 1_100, baseMps: 8 },
-  { id: 'runeCircle', tier: 4, name: '마법진', icon: '🔮', baseCost: 12_000, baseMps: 47 },
-  { id: 'spiritPact', tier: 5, name: '정령 계약', icon: '🧚', baseCost: 130_000, baseMps: 260 },
-  { id: 'dragonNest', tier: 6, name: '드래곤 둥지', icon: '🐉', baseCost: 1_400_000, baseMps: 1_400 },
+  // T8.1 밸런싱: 상위 티어 회수기간이 150s→1000s로 가팔라 후반 성장이 정체됨(시뮬 검증).
+  // 업그레이드 밀도가 낮은 6티어 구성에 맞춰 T3~T6을 상향해 §2.8 목표표(±30%)에 맞춤.
+  { id: 'herbGarden', tier: 3, name: '허브 정원', icon: '🌿', baseCost: 1_100, baseMps: 10 },
+  { id: 'runeCircle', tier: 4, name: '마법진', icon: '🔮', baseCost: 10_000, baseMps: 75 },
+  { id: 'spiritPact', tier: 5, name: '정령 계약', icon: '🧚', baseCost: 130_000, baseMps: 640 },
+  { id: 'dragonNest', tier: 6, name: '드래곤 둥지', icon: '🐉', baseCost: 1_400_000, baseMps: 8_500 },
 ]
