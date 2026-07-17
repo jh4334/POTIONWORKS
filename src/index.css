@@ -1,0 +1,133 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --bg: #1a1425;
+  --panel: #251c36;
+  --border: #3d2f57;
+  --text: #ece5f8;
+  --text-dim: #9d92b5;
+  --accent: #a970ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#root,
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.header-stats {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+}
+
+.header-mana {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.header-mps {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  min-height: 0;
+}
+
+.layout-left {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.layout-right {
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.clicker-panel {
+  text-align: center;
+}
+
+.cauldron-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  background: radial-gradient(circle at 35% 30%, #35284e, var(--panel));
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  justify-content: center;
+  transition: transform 0.05s ease;
+}
+
+.cauldron-button:hover {
+  border-color: var(--accent);
+}
+
+.cauldron-button:active {
+  transform: scale(0.96);
+}
+
+.cauldron-emoji {
+  font-size: 64px;
+}
+
+.generator-list-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.generator-list-placeholder {
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+@media (max-width: 800px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .layout-right {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
