@@ -1,4 +1,5 @@
 import { useGameStore } from '../store/gameStore.ts'
+import { formatNumber } from '../utils/format.ts'
 
 export default function Header() {
   const mana = useGameStore((s) => s.mana)
@@ -8,8 +9,8 @@ export default function Header() {
     <header className="header">
       <h1 className="header-title">🧪 POTIONWORKS</h1>
       <div className="header-stats">
-        <span className="header-mana">{mana} 마나</span>
-        <span className="header-mps">초당 {mps}</span>
+        <span className="header-mana">{formatNumber(mana)} 마나</span>
+        <span className="header-mps">초당 {formatNumber(mps)}</span>
       </div>
     </header>
   )

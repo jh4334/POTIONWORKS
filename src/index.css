@@ -83,6 +83,7 @@ body {
 }
 
 .cauldron-button {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -109,6 +110,30 @@ body {
 
 .cauldron-emoji {
   font-size: 64px;
+}
+
+/* T1.2 클릭 숫자 팝: 클릭 좌표에서 위로 떠오르며 페이드아웃(약 0.8s). */
+.click-pop {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  animation: click-pop-rise 0.8s ease-out forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes click-pop-rise {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 60px));
+  }
 }
 
 .generator-list-title {
