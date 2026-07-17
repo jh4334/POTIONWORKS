@@ -7,11 +7,15 @@ import {
   generatorMultiplier,
   clickPower,
   isUpgradeUnlocked,
+  isAchievementUnlocked,
   stardustFor,
   stardustMultiplier,
+  achievementMultiplier,
+  type AchievementStats,
 } from './formulas.ts'
 import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
+import type { AchievementDef } from '../data/achievements.ts'
 
 // 테스트용 업그레이드 정의(수식만 검증하므로 name/desc/cost/unlock은 의미값만 채운다).
 function mult2(generatorId: string): UpgradeDef {
@@ -198,6 +202,21 @@ describe('stardustMultiplier', () => {
   })
 })
 
+describe('achievementMultiplier', () => {
+  it('0개면 1.0, 1개면 1.01, 20개면 1.2', () => {
+    expect(achievementMultiplier(0)).toBeCloseTo(1.0)
+    expect(achievementMultiplier(1)).toBeCloseTo(1.01)
+    expect(achievementMultiplier(20)).toBeCloseTo(1.2)
+  })
+
+  it('전체 배율은 스타더스트×업적 합성 — totalMps에 한 번만 곱한다', () => {
+    const gens: GeneratorDef[] = [{ id: 'a', tier: 1, name: 'A', icon: '', baseCost: 15, baseMps: 1 }]
+    const base = 10 // a 10개 × 1
+    const globalMult = stardustMultiplier(5) * achievementMultiplier(10) // 1.5 × 1.1 = 1.65
+    expect(totalMps({ a: 10 }, gens, [], globalMult)).toBeCloseTo(base * 1.65)
+  })
+})
+
 describe('generatorMultiplier', () => {
   it('업그레이드 없으면 1', () => {
     expect(generatorMultiplier('a', [], {})).toBe(1)
@@ -241,5 +260,50 @@ describe('isUpgradeUnlocked', () => {
     const def = clickPercent(1) // minMps 10
     expect(isUpgradeUnlocked(def, {}, 9.9)).toBe(false)
     expect(isUpgradeUnlocked(def, {}, 10)).toBe(true)
+  })
+})
+
+describe('isAchievementUnlocked', () => {
+  function ach(condition: AchievementDef['condition']): AchievementDef {
+    return { id: 'x', name: '', desc: '', condition }
+  }
+  const base: AchievementStats = {
+    totalClicks: 0,
+    generators: {},
+    totalLifetimeMana: 0,
+    totalPrestiges: 0,
+    mps: 0,
+  }
+
+  it('clicks: 총 클릭 수 경계', () => {
+    const def = ach({ kind: 'clicks', min: 100 })
+    expect(isAchievementUnlocked(def, { ...base, totalClicks: 99 })).toBe(false)
+    expect(isAchievementUnlocked(def, { ...base, totalClicks: 100 })).toBe(true)
+  })
+
+  it('generatorCount: 특정 시설 보유수 경계', () => {
+    const def = ach({ kind: 'generatorCount', generatorId: 'apprentice', min: 50 })
+    expect(isAchievementUnlocked(def, { ...base, generators: { apprentice: 49 } })).toBe(false)
+    expect(isAchievementUnlocked(def, { ...base, generators: { apprentice: 50 } })).toBe(true)
+    // 다른 시설 보유는 무시.
+    expect(isAchievementUnlocked(def, { ...base, generators: { cauldron: 999 } })).toBe(false)
+  })
+
+  it('lifetimeMana: 전생 포함 총 누적 마나 경계', () => {
+    const def = ach({ kind: 'lifetimeMana', min: 1e6 })
+    expect(isAchievementUnlocked(def, { ...base, totalLifetimeMana: 1e6 - 1 })).toBe(false)
+    expect(isAchievementUnlocked(def, { ...base, totalLifetimeMana: 1e6 })).toBe(true)
+  })
+
+  it('prestiges: 각성 횟수 경계', () => {
+    const def = ach({ kind: 'prestiges', min: 5 })
+    expect(isAchievementUnlocked(def, { ...base, totalPrestiges: 4 })).toBe(false)
+    expect(isAchievementUnlocked(def, { ...base, totalPrestiges: 5 })).toBe(true)
+  })
+
+  it('mps: 현재 MPS 경계', () => {
+    const def = ach({ kind: 'mps', min: 100 })
+    expect(isAchievementUnlocked(def, { ...base, mps: 99.9 })).toBe(false)
+    expect(isAchievementUnlocked(def, { ...base, mps: 100 })).toBe(true)
   })
 })

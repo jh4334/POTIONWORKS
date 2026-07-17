@@ -2,7 +2,8 @@
 // 비용 곡선 버그는 세이브를 오염시키므로 formulas.test.ts로 경계값을 고정한다.
 import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
-import { PRESTIGE_THRESHOLD, STARDUST_MULT_PER } from '../data/config.ts'
+import type { AchievementDef } from '../data/achievements.ts'
+import { ACHIEVEMENT_MULT_PER, PRESTIGE_THRESHOLD, STARDUST_MULT_PER } from '../data/config.ts'
 
 // ceil 정책: 비용은 항상 정수로 올림한다(표시·구매 동일 값).
 // 단건 구매 가격 = baseCost × 1.15^보유수.
@@ -61,20 +62,21 @@ export function generatorMultiplier(
   return mult
 }
 
-// 전체 MPS = Σ (보유수 × 개당 baseMps × 티어 배율) × 스타더스트 배율.
+// 전체 MPS = Σ (보유수 × 개당 baseMps × 티어 배율) × 전체 배율.
 // purchasedUpgrades 미지정(기본 [])이면 배율 1 — 업그레이드 없을 때 기존 값과 동일.
-// stardustMult 미지정(기본 1)이면 각성 배율 없음 — 각성 전과 동일. 전체에 한 번만 곱한다.
+// globalMult 미지정(기본 1)이면 전체 배율 없음 — 스타더스트·업적 배율을 곱한 값(recalcDerived에서 합성)을
+//   전체에 한 번만 곱한다. 개별 시설이 아니라 합산 후 곱해야 배율 의미가 일관된다.
 export function totalMps(
   counts: Record<string, number>,
   generators: GeneratorDef[],
   purchasedUpgrades: UpgradeDef[] = [],
-  stardustMult: number = 1,
+  globalMult: number = 1,
 ): number {
   let total = 0
   for (const g of generators) {
     total += (counts[g.id] ?? 0) * g.baseMps * generatorMultiplier(g.id, purchasedUpgrades, counts)
   }
-  return total * stardustMult
+  return total * globalMult
 }
 
 // 각성 보상: 이번 생 누적 마나로 얻는 스타더스트 = floor(sqrt(누적 마나 / 임계값)).
@@ -87,6 +89,38 @@ export function stardustFor(lifetimeMana: number): number {
 // 스타더스트 영구 배율 = 1 + stardust × 개당 증가분. 0개면 1.0(배율 없음).
 export function stardustMultiplier(stardust: number): number {
   return 1 + stardust * STARDUST_MULT_PER
+}
+
+// 업적 배율 = 1 + 달성수 × 개당 증가분. 0개면 1.0(배율 없음).
+// 전체 MPS에 스타더스트 배율과 함께 곱해진다(recalcDerived에서 합성).
+export function achievementMultiplier(count: number): number {
+  return 1 + count * ACHIEVEMENT_MULT_PER
+}
+
+// 업적 달성 판정에 필요한 통계 스냅샷(순수 함수 입력).
+export interface AchievementStats {
+  totalClicks: number
+  generators: Record<string, number>
+  totalLifetimeMana: number
+  totalPrestiges: number
+  mps: number
+}
+
+// 업적 달성 여부(순수). 조건 종류별로 통계와 비교한다.
+export function isAchievementUnlocked(def: AchievementDef, stats: AchievementStats): boolean {
+  const c = def.condition
+  switch (c.kind) {
+    case 'clicks':
+      return stats.totalClicks >= c.min
+    case 'generatorCount':
+      return (stats.generators[c.generatorId] ?? 0) >= c.min
+    case 'lifetimeMana':
+      return stats.totalLifetimeMana >= c.min
+    case 'prestiges':
+      return stats.totalPrestiges >= c.min
+    case 'mps':
+      return stats.mps >= c.min
+  }
 }
 
 // 클릭당 획득량 = 기본 클릭력 + MPS × (clickMpsPercent 합 / 100).

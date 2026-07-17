@@ -3,7 +3,9 @@ import { useGameStore } from '../store/gameStore.ts'
 import { formatNumber } from '../utils/format.ts'
 import { saveToLocal } from '../engine/save.ts'
 import { PRESTIGE_THRESHOLD, STARDUST_MULT_PER } from '../data/config.ts'
+import { ACHIEVEMENTS } from '../data/achievements.ts'
 import SaveModal from './SaveModal.tsx'
+import AchievementsModal from './AchievementsModal.tsx'
 
 // 마지막 저장 시각 표시용 포맷(HH:MM:SS).
 function formatClock(ms: number): string {
@@ -20,9 +22,15 @@ export default function Header() {
   const showStardust = stardust > 0 || canPrestige
   const bonusPercent = Math.round(stardust * STARDUST_MULT_PER * 100)
 
-  // 수동 저장 시각 + 백업 모달 열림은 순수 UI 상태 → 컴포넌트 로컬로 관리(스토어 비오염).
+  // 업적 진행도 + 음소거는 스토어 구독. 업적수는 배열 길이만 파생 구독(달성 시에만 변함).
+  const achievementCount = useGameStore((s) => s.achievements.length)
+  const muted = useGameStore((s) => s.muted)
+  const toggleMuted = useGameStore((s) => s.toggleMuted)
+
+  // 수동 저장 시각 + 백업/업적 모달 열림은 순수 UI 상태 → 컴포넌트 로컬로 관리(스토어 비오염).
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [showBackup, setShowBackup] = useState(false)
+  const [showAchievements, setShowAchievements] = useState(false)
 
   const handleSave = () => {
     const now = Date.now()
@@ -45,6 +53,23 @@ export default function Header() {
       </div>
       <div className="header-actions">
         {savedAt !== null && <span className="header-saved-at">{formatClock(savedAt)} 저장됨</span>}
+        <button
+          type="button"
+          className="header-button"
+          onClick={() => setShowAchievements(true)}
+          title="업적 목록"
+        >
+          🏆 {achievementCount}/{ACHIEVEMENTS.length}
+        </button>
+        <button
+          type="button"
+          className="header-button"
+          onClick={toggleMuted}
+          aria-label={muted ? '음소거 해제' : '음소거'}
+          title={muted ? '음소거 해제' : '음소거'}
+        >
+          {muted ? '🔇' : '🔊'}
+        </button>
         <button type="button" className="header-button" onClick={handleSave}>
           저장
         </button>
@@ -53,6 +78,7 @@ export default function Header() {
         </button>
       </div>
       {showBackup && <SaveModal onClose={() => setShowBackup(false)} />}
+      {showAchievements && <AchievementsModal onClose={() => setShowAchievements(false)} />}
     </header>
   )
 }

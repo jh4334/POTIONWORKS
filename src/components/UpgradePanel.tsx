@@ -4,6 +4,7 @@ import { useGameStore } from '../store/gameStore.ts'
 import { UPGRADES, type UpgradeDef } from '../data/upgrades.ts'
 import { isUpgradeUnlocked } from '../engine/formulas.ts'
 import { formatNumber } from '../utils/format.ts'
+import { playDing } from '../engine/sound.ts'
 
 // 노출 정책(T3.1): 해금됐고 아직 안 산 업그레이드만 카드로 노출.
 // 조건 미달은 숨김, 구매하면 목록에서 사라진다.
@@ -51,7 +52,9 @@ function UpgradeCardBase({ def }: CardProps) {
       type="button"
       className={`upgrade-card${canAfford ? ' can-afford' : ''}`}
       onClick={() => {
-        if (canAfford) buyUpgrade(def.id)
+        if (!canAfford) return
+        buyUpgrade(def.id)
+        playDing() // 구매 성공음. muted면 sound가 무시.
       }}
       disabled={!canAfford}
     >

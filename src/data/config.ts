@@ -27,3 +27,13 @@ export const OFFLINE_MIN_MS = 60_000
 export const PRESTIGE_THRESHOLD = 1e9
 // 스타더스트 1개당 전체 생산 배율 증가분(+10% → 0.1). 배율 = 1 + stardust × 이 값.
 export const STARDUST_MULT_PER = 0.1
+
+// --- 업적 (T6.1, DESIGN.md §2.7) ---
+// 업적 1개당 전체 생산 배율 증가분(+1% → 0.01). 배율 = 1 + 달성수 × 이 값.
+// 스타더스트 배율과 함께 전체 MPS에 곱해진다(recalcDerived에서 합성).
+export const ACHIEVEMENT_MULT_PER = 0.01
+// 업적 달성 체크 스로틀(ms). tick에서는 값이 매 프레임 변해도 1초에 1번만 검사한다
+// (click/buy/prestige/offline 등 값이 크게 변하는 액션에서는 즉시 검사).
+export const ACHIEVEMENT_CHECK_INTERVAL_MS = 1_000
+// 업적 토스트 자동 소멸 시간(ms).
+export const ACHIEVEMENT_TOAST_MS = 3_000

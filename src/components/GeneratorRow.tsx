@@ -4,6 +4,7 @@ import { useGameStore } from '../store/gameStore.ts'
 import type { GeneratorDef } from '../data/generators.ts'
 import { generatorCost, bulkCost, maxAffordable } from '../engine/formulas.ts'
 import { formatNumber } from '../utils/format.ts'
+import { playDing } from '../engine/sound.ts'
 
 interface Props {
   def: GeneratorDef
@@ -46,7 +47,9 @@ function GeneratorRow({ def, revealed }: Props) {
   }
 
   const handleBuy = () => {
-    if (canAfford) buyGenerator(def.id, count)
+    if (!canAfford) return
+    buyGenerator(def.id, count)
+    playDing() // 구매 성공음. muted면 sound가 무시.
   }
 
   return (

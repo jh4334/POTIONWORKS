@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type MouseEvent } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { formatNumber } from '../utils/format.ts'
+import { playClick } from '../engine/sound.ts'
 
 // T1.2 클릭 숫자 팝: 순수 UI 이펙트라 게임 상태(store)가 아니라 로컬 상태로 관리한다.
 interface Pop {
@@ -21,6 +22,7 @@ export default function ClickerPanel() {
   const handleClick = useCallback(
     (e: MouseEvent<HTMLButtonElement>) => {
       click()
+      playClick() // 짧은 pop(사용자 제스처라 AudioContext resume 허용). muted면 sound가 무시.
       // 클릭 좌표(버튼 기준)에서 팝이 떠오르도록.
       const rect = e.currentTarget.getBoundingClientRect()
       const pop: Pop = {

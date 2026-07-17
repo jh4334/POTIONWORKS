@@ -1,14 +1,17 @@
 import { create } from 'zustand'
-import { INITIAL_CLICK_POWER, PRESTIGE_THRESHOLD } from '../data/config.ts'
+import { INITIAL_CLICK_POWER, PRESTIGE_THRESHOLD, ACHIEVEMENT_CHECK_INTERVAL_MS } from '../data/config.ts'
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES, resolveUpgrades } from '../data/upgrades.ts'
+import { ACHIEVEMENTS } from '../data/achievements.ts'
 import {
   bulkCost,
   totalMps,
   clickPower as computeClickPower,
   isUpgradeUnlocked,
+  isAchievementUnlocked,
   stardustFor,
   stardustMultiplier,
+  achievementMultiplier,
 } from '../engine/formulas.ts'
 import { clearSave, type SaveData } from '../engine/save.ts'
 
@@ -21,6 +24,12 @@ export type BuyAmount = 1 | 10 | 'max'
 export interface OfflineGain {
   amount: number // 지급된 마나
   elapsedMs: number // 실제 자리 비운 시간(캡 적용 전, 표시용)
+}
+
+// 업적 달성 토스트(T6.1). 세이브 비포함 UI 상태. id는 렌더 key + 개별 소멸용.
+export interface AchievementToast {
+  id: number
+  name: string
 }
 
 export interface GameState {
@@ -41,8 +50,22 @@ export interface GameState {
   stardust: number
   // 총 각성 횟수(통계). 각성해도 유지.
   totalPrestiges: number
+  // 업적(T6.1) — 달성한 업적 id 목록. 각성해도 유지(DESIGN §2.5: 유지=스타더스트/업적/통계).
+  achievements: string[]
+  // 총 클릭 수(통계). 각성해도 유지. 업적 조건.
+  totalClicks: number
+  // 전생 포함 총 누적 마나(통계). lifetimeMana처럼 증가하되 각성해도 리셋 안 됨. 업적 조건.
+  totalLifetimeMana: number
+  // 음소거(T6.2). 세이브에 포함(v3). 사운드 재생 여부는 이 값을 sound.setMuted로 반영해 판단한다.
+  muted: boolean
   // 오프라인 수익 팝업(세이브 비포함 UI 상태). null이면 팝업 없음.
   offlineGain: OfflineGain | null
+  // 업적 토스트 큐(세이브 비포함 UI 상태). 여러 개 동시 달성 시 세로 스택.
+  toasts: AchievementToast[]
+  // 마일스톤 이펙트 트리거(세이브 비포함). 값이 바뀔 때마다 BurstEffect가 파티클 버스트를 낸다.
+  burstKey: number
+  // 업적 체크 스로틀용 마지막 검사 시각(세이브 비포함). tick에서 1초에 1번만 검사하기 위한 상태.
+  lastAchievementCheckAt: number
   // 솥 클릭: 마나를 clickPower만큼 증가(누적 마나도 함께).
   click: () => void
   // 시설 구매: 비용 확인 후 마나 차감 + 보유 증가 + 파생값 재계산.
@@ -63,8 +86,12 @@ export interface GameState {
   dismissOffline: () => void
   // 각성(T5.1): 조건(lifetimeMana >= 임계) 충족 시 stardust += stardustFor(lifetimeMana),
   //   totalPrestiges += 1, 그리고 마나/시설/업그레이드/buyAmount/lifetimeMana 초기화.
-  //   유지: stardust, totalPrestiges. 리셋 후 파생값(MPS·clickPower) 재계산.
+  //   유지: stardust, totalPrestiges, 업적·통계. 리셋 후 파생값(MPS·clickPower) 재계산.
   prestige: () => void
+  // 업적 토스트 소멸(자동 3초 타이머가 호출).
+  dismissToast: (id: number) => void
+  // 음소거 토글(T6.2). 세이브 대상 값이라 액션에서 변형한다.
+  toggleMuted: () => void
 }
 
 function initialGenerators(): Record<string, number> {
@@ -98,31 +125,85 @@ function createInitialState() {
     lifetimeMana: 0,
     stardust: 0,
     totalPrestiges: 0,
+    achievements: [] as string[],
+    totalClicks: 0,
+    totalLifetimeMana: 0,
+    muted: false,
     offlineGain: null as OfflineGain | null,
+    toasts: [] as AchievementToast[],
+    burstKey: 0,
+    lastAchievementCheckAt: 0,
   }
 }
 
 // 파생값(MPS·clickPower) 일괄 재계산. buyGenerator/buyUpgrade/prestige/loadSave 공통.
 // clickPower는 MPS에 의존하므로 항상 함께 계산해 캐시를 일관되게 유지한다.
-// (MPS·clickPower 모두 generators/upgrades/stardust 변경 시에만 바뀌고 tick에서는 불변.)
-// MPS에는 stardust 영구 배율을 곱한다. clickPower에는 적용하지 않는다(MPS 기반 클릭 강화로 간접 수혜).
+// (MPS·clickPower 모두 generators/upgrades/stardust/업적수 변경 시에만 바뀌고 tick에서는 불변.)
+// MPS에는 스타더스트 배율 × 업적 배율을 합성해 한 번만 곱한다(합산 후 전체 배율).
 function recalcDerived(
   generators: Record<string, number>,
   upgradeIds: string[],
   basePower: number,
   stardust: number,
+  achievementCount: number,
 ): { manaPerSecond: number; clickPower: number } {
   const ups = resolveUpgrades(upgradeIds)
-  const manaPerSecond = totalMps(generators, GENERATORS, ups, stardustMultiplier(stardust))
+  const globalMult = stardustMultiplier(stardust) * achievementMultiplier(achievementCount)
+  const manaPerSecond = totalMps(generators, GENERATORS, ups, globalMult)
   return { manaPerSecond, clickPower: computeClickPower(basePower, manaPerSecond, ups) }
+}
+
+// 토스트 id 카운터(UI 전용, 세이브 비포함). 모듈 스코프면 충분하다.
+let nextToastId = 0
+
+// 값이 변하는 액션 끝에서 호출: 병합된 상태(prev + partial)로 미달성 업적을 검사하고,
+// 새로 달성된 게 있으면 achievements 추가 + 토스트 push + burstKey 증가 + 파생값 재계산을
+// partial에 얹어 돌려준다(없으면 partial 그대로). 순수하게 유지해 액션에서만 상태를 만든다.
+function withAchievements<T extends Partial<GameState>>(
+  prev: GameState,
+  partial: T,
+): T | (T & Partial<GameState>) {
+  const next = { ...prev, ...partial }
+  const stats = {
+    totalClicks: next.totalClicks,
+    generators: next.generators,
+    totalLifetimeMana: next.totalLifetimeMana,
+    totalPrestiges: next.totalPrestiges,
+    mps: next.manaPerSecond,
+  }
+  const owned = new Set(next.achievements)
+  const unlocked: typeof ACHIEVEMENTS = []
+  for (const def of ACHIEVEMENTS) {
+    if (!owned.has(def.id) && isAchievementUnlocked(def, stats)) unlocked.push(def)
+  }
+  if (unlocked.length === 0) return partial
+
+  const achievements = [...next.achievements, ...unlocked.map((d) => d.id)]
+  const toasts = [...next.toasts, ...unlocked.map((d) => ({ id: nextToastId++, name: d.name }))]
+  return {
+    ...partial,
+    achievements,
+    toasts,
+    burstKey: next.burstKey + 1, // 마일스톤 파티클 버스트 트리거(T6.2)
+    // 업적수가 늘었으므로 생산 배율 재계산 — 늘어난 mps로 다음 tick/액션에서 연쇄 달성이 이어질 수 있다.
+    ...recalcDerived(next.generators, next.upgrades, next.basePower, next.stardust, achievements.length),
+  }
 }
 
 export const useGameStore = create<GameState>()((set) => ({
   ...createInitialState(),
 
-  // 클릭 획득은 소비되지 않는 순수 획득 — lifetimeMana(각성 기준)도 같이 늘린다.
+  // 클릭 획득은 소비되지 않는 순수 획득 — lifetimeMana(각성 기준)와 통계(총 클릭/총 누적 마나)도 늘린다.
+  // 값이 변하므로 끝에서 업적 검사(즉시).
   click: () =>
-    set((s) => ({ mana: s.mana + s.clickPower, lifetimeMana: s.lifetimeMana + s.clickPower })),
+    set((s) =>
+      withAchievements(s, {
+        mana: s.mana + s.clickPower,
+        lifetimeMana: s.lifetimeMana + s.clickPower,
+        totalLifetimeMana: s.totalLifetimeMana + s.clickPower,
+        totalClicks: s.totalClicks + 1,
+      }),
+    ),
 
   buyGenerator: (id, count) =>
     set((s) => {
@@ -133,11 +214,11 @@ export const useGameStore = create<GameState>()((set) => ({
       const cost = bulkCost(def.baseCost, owned, count)
       if (s.mana < cost) return s
       const generators = { ...s.generators, [id]: owned + count }
-      return {
+      return withAchievements(s, {
         mana: s.mana - cost,
         generators,
-        ...recalcDerived(generators, s.upgrades, s.basePower, s.stardust),
-      }
+        ...recalcDerived(generators, s.upgrades, s.basePower, s.stardust, s.achievements.length),
+      })
     }),
 
   buyUpgrade: (id) =>
@@ -149,34 +230,39 @@ export const useGameStore = create<GameState>()((set) => ({
       if (!isUpgradeUnlocked(def, s.generators, s.manaPerSecond)) return s
       if (s.mana < def.cost) return s
       const upgrades = [...s.upgrades, id]
-      return {
+      return withAchievements(s, {
         mana: s.mana - def.cost,
         upgrades,
-        ...recalcDerived(s.generators, upgrades, s.basePower, s.stardust),
-      }
+        ...recalcDerived(s.generators, upgrades, s.basePower, s.stardust, s.achievements.length),
+      })
     }),
 
   // 진실은 타임스탬프: 인터벌 주기가 아니라 경과시간(now − lastTick)만큼만 적립.
   // 백그라운드 스로틀·탭 복귀 catch-up이 이 한 줄로 자동 처리된다.
+  // 업적 검사는 매 tick이 아니라 1초에 1번만(스로틀) — mps/누적 마나 기반 업적을 가볍게 잡는다.
   tick: (now) =>
     set((s) => {
       const elapsedMs = now - s.lastTick
       if (elapsedMs <= 0) return s // 시계 역행·중복 호출 무시
       const gained = s.manaPerSecond * (elapsedMs / 1000)
-      return {
+      const partial = {
         mana: s.mana + gained,
         lifetimeMana: s.lifetimeMana + gained, // 생산 획득도 누적 마나에 반영
+        totalLifetimeMana: s.totalLifetimeMana + gained, // 전생 포함 총 누적(각성해도 유지)
         lastTick: now,
       }
+      if (now - s.lastAchievementCheckAt < ACHIEVEMENT_CHECK_INTERVAL_MS) return partial
+      return { ...withAchievements(s, partial), lastAchievementCheckAt: now }
     }),
 
   setBuyAmount: (amount) => set({ buyAmount: amount }),
 
   loadSave: (save) =>
-    set(() => {
+    set((s) => {
       const st = save.state
       const generators = mergeGenerators(st.generators)
       const upgrades = resolveUpgrades(st.upgrades).map((u) => u.id) // 알 수 없는 id 제거
+      const achievements = st.achievements
       return {
         mana: st.mana,
         basePower: st.basePower,
@@ -189,7 +275,14 @@ export const useGameStore = create<GameState>()((set) => ({
         lifetimeMana: st.lifetimeMana,
         stardust: st.stardust,
         totalPrestiges: st.totalPrestiges,
-        ...recalcDerived(generators, upgrades, st.basePower, st.stardust),
+        achievements,
+        totalClicks: st.totalClicks,
+        totalLifetimeMana: st.totalLifetimeMana,
+        muted: st.muted,
+        // 로드 시 토스트는 띄우지 않는다(이미 달성한 것). 스로틀 시각도 초기화.
+        toasts: s.toasts,
+        lastAchievementCheckAt: 0,
+        ...recalcDerived(generators, upgrades, st.basePower, st.stardust, achievements.length),
       }
     }),
 
@@ -199,17 +292,21 @@ export const useGameStore = create<GameState>()((set) => ({
   },
 
   applyOfflineEarnings: (amount, now, elapsedMs) =>
-    set((s) => ({
-      mana: s.mana + amount,
-      lifetimeMana: s.lifetimeMana + amount, // 오프라인 획득도 누적 마나에 반영
-      lastTick: now, // 이중 지급 금지: 오프라인으로 인정한 구간을 tick이 또 세지 않게 한다.
-      offlineGain: { amount, elapsedMs },
-    })),
+    set((s) =>
+      withAchievements(s, {
+        mana: s.mana + amount,
+        lifetimeMana: s.lifetimeMana + amount, // 오프라인 획득도 누적 마나에 반영
+        totalLifetimeMana: s.totalLifetimeMana + amount,
+        lastTick: now, // 이중 지급 금지: 오프라인으로 인정한 구간을 tick이 또 세지 않게 한다.
+        offlineGain: { amount, elapsedMs },
+      }),
+    ),
 
   dismissOffline: () => set({ offlineGain: null }),
 
   // 각성: 이번 생 누적 마나로 스타더스트를 얻고 진행을 초기화한다.
   // 조건 미달(lifetimeMana < 임계 또는 보상 0)이면 아무것도 하지 않는다(UI에서도 막지만 방어).
+  // 유지: stardust, totalPrestiges, 업적·통계(totalClicks/totalLifetimeMana). 각성 자체가 업적을 달성시킬 수 있어 검사.
   prestige: () =>
     set((s) => {
       if (s.lifetimeMana < PRESTIGE_THRESHOLD) return s
@@ -219,7 +316,8 @@ export const useGameStore = create<GameState>()((set) => ({
       // 리셋: 마나/시설/업그레이드/buyAmount/lifetimeMana/clickPower(basePower). 유지: stardust, totalPrestiges.
       const generators = initialGenerators()
       const upgrades: string[] = []
-      return {
+      const totalPrestiges = s.totalPrestiges + 1
+      return withAchievements(s, {
         mana: 0,
         lifetimeMana: 0,
         generators,
@@ -227,9 +325,14 @@ export const useGameStore = create<GameState>()((set) => ({
         basePower: INITIAL_CLICK_POWER,
         buyAmount: 1 as BuyAmount,
         stardust,
-        totalPrestiges: s.totalPrestiges + 1,
+        totalPrestiges,
         lastTick: Date.now(),
-        ...recalcDerived(generators, upgrades, INITIAL_CLICK_POWER, stardust),
-      }
+        burstKey: s.burstKey + 1, // 각성 순간에도 마일스톤 파티클 버스트(T6.2)
+        ...recalcDerived(generators, upgrades, INITIAL_CLICK_POWER, stardust, s.achievements.length),
+      })
     }),
+
+  dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+
+  toggleMuted: () => set((s) => ({ muted: !s.muted })),
 }))

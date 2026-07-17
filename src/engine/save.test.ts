@@ -11,9 +11,11 @@ import {
 } from './save.ts'
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
+import { ACHIEVEMENTS } from '../data/achievements.ts'
 
 const KNOWN_GEN = GENERATORS[0].id // 'apprentice'
 const KNOWN_UP = UPGRADES[0].id // 'apprentice-x2-10'
+const KNOWN_ACH = ACHIEVEMENTS[0].id // 'clicks-100'
 
 // 클린 픽스처(알려진 id만, 중복 없음) — 라운드트립이 정확히 일치하도록.
 function makeState(): SaveState {
@@ -30,6 +32,10 @@ function makeState(): SaveState {
     lifetimeMana: 5678.9,
     stardust: 4,
     totalPrestiges: 2,
+    achievements: [KNOWN_ACH],
+    totalClicks: 321,
+    totalLifetimeMana: 98765.4,
+    muted: true,
   }
 }
 
@@ -147,6 +153,90 @@ describe('migrate', () => {
     expect(out!.state.lifetimeMana).toBe(50)
     expect(out!.state.stardust).toBe(0)
     expect(out!.state.totalPrestiges).toBe(0)
+  })
+
+  it('v2→v3: 업적/통계·음소거 필드가 없으면 achievements=[], totalClicks=0, totalLifetimeMana=lifetimeMana, muted=false', () => {
+    const v2 = {
+      version: 2,
+      savedAt: FIXED_NOW,
+      state: {
+        mana: 100,
+        basePower: 1,
+        lastTick: 5,
+        buyAmount: 1,
+        generators: {},
+        upgrades: [],
+        lifetimeMana: 777,
+        stardust: 2,
+        totalPrestiges: 1,
+      },
+    }
+    const out = migrate(v2)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 3으로 승격
+    expect(out!.state.achievements).toEqual([])
+    expect(out!.state.totalClicks).toBe(0)
+    expect(out!.state.totalLifetimeMana).toBe(777) // 이번 생 누적을 총 누적 출발값으로
+    expect(out!.state.muted).toBe(false)
+  })
+
+  it('v1→v3: totalLifetimeMana는 마이그레이션된 lifetimeMana(=mana)로', () => {
+    const v1 = {
+      version: 1,
+      savedAt: FIXED_NOW,
+      state: { mana: 4200, basePower: 1, lastTick: 5, buyAmount: 1, generators: {}, upgrades: [] },
+    }
+    const out = migrate(v1)
+    expect(out!.state.totalLifetimeMana).toBe(4200)
+    expect(out!.state.achievements).toEqual([])
+    expect(out!.state.muted).toBe(false)
+  })
+
+  it('v3 세이브는 업적/통계·음소거 필드를 그대로 채택(미지 업적 id는 제거)', () => {
+    const v3 = {
+      version: 3,
+      savedAt: FIXED_NOW,
+      state: {
+        mana: 100,
+        basePower: 1,
+        lastTick: 5,
+        buyAmount: 1,
+        generators: {},
+        upgrades: [],
+        lifetimeMana: 999,
+        stardust: 0,
+        totalPrestiges: 0,
+        achievements: [KNOWN_ACH, 'no-such-achievement'],
+        totalClicks: 42,
+        totalLifetimeMana: 123456,
+        muted: true,
+      },
+    }
+    const out = migrate(v3)
+    expect(out!.state.achievements).toEqual([KNOWN_ACH]) // 미지 업적 제거
+    expect(out!.state.totalClicks).toBe(42)
+    expect(out!.state.totalLifetimeMana).toBe(123456)
+    expect(out!.state.muted).toBe(true)
+  })
+
+  it('v3에서 통계 필드가 손상되면 안전한 fallback(totalLifetimeMana=lifetimeMana, 나머지 0/false)', () => {
+    const out = migrate({
+      version: 3,
+      savedAt: 1,
+      state: {
+        ...validState(),
+        mana: 50,
+        lifetimeMana: 300,
+        achievements: 'nope',
+        totalClicks: -5,
+        totalLifetimeMana: NaN,
+        muted: 'yes',
+      },
+    })
+    expect(out!.state.achievements).toEqual([])
+    expect(out!.state.totalClicks).toBe(0)
+    expect(out!.state.totalLifetimeMana).toBe(300) // lifetimeMana fallback
+    expect(out!.state.muted).toBe(false) // 'yes'는 boolean true가 아님
   })
 })
 

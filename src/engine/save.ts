@@ -7,11 +7,13 @@
 import { SAVE_KEY } from '../data/config.ts'
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
+import { KNOWN_ACHIEVEMENT_IDS } from '../data/achievements.ts'
 import type { BuyAmount } from '../store/gameStore.ts'
 
 // 세이브 스키마 버전. 필드 구조를 바꾸면 올리고 migrate에 단계 추가.
 // v2(T5.1): 각성 필드(lifetimeMana/stardust/totalPrestiges) 추가.
-export const SAVE_VERSION = 2
+// v3(T6.1/T6.2): 업적/통계(achievements/totalClicks/totalLifetimeMana) + 음소거(muted) 추가.
+export const SAVE_VERSION = 3
 
 // 직렬화 대상(진실만). 파생값은 제외.
 export interface SaveState {
@@ -25,6 +27,12 @@ export interface SaveState {
   lifetimeMana: number
   stardust: number
   totalPrestiges: number
+  // 업적/통계(v3). achievements=달성 id, totalClicks=총 클릭, totalLifetimeMana=전생 포함 총 누적 마나.
+  achievements: string[]
+  totalClicks: number
+  totalLifetimeMana: number
+  // 음소거(v3).
+  muted: boolean
 }
 
 export interface SaveData {
@@ -53,6 +61,10 @@ export function toSaveData(state: SaveState, now: number = Date.now()): SaveData
       lifetimeMana: state.lifetimeMana,
       stardust: state.stardust,
       totalPrestiges: state.totalPrestiges,
+      achievements: [...state.achievements],
+      totalClicks: state.totalClicks,
+      totalLifetimeMana: state.totalLifetimeMana,
+      muted: state.muted,
     },
   }
 }
@@ -109,10 +121,22 @@ function normalizeUpgrades(v: unknown): string[] {
   return [...seen]
 }
 
-// 버전별 마이그레이션. 필수 필드 존재/타입 체크 후 최신(v2) 형태로 끌어올린다.
-// 실패 시 null(콘솔 경고). 알 수 없는 generator/upgrade id는 무시하고 로드한다.
+// achievements 정규화: 알려진 업적 id 문자열만, 중복 제거.
+function normalizeAchievements(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  const seen = new Set<string>()
+  for (const id of v) {
+    if (typeof id === 'string' && KNOWN_ACHIEVEMENT_IDS.has(id)) seen.add(id)
+  }
+  return [...seen]
+}
+
+// 버전별 마이그레이션. 필수 필드 존재/타입 체크 후 최신(v3) 형태로 끌어올린다.
+// 실패 시 null(콘솔 경고). 알 수 없는 generator/upgrade/achievement id는 무시하고 로드한다.
 // v1→v2: 각성 필드가 없으므로 lifetimeMana=mana(보수적: 현재 마나까지는 벌었다고 간주),
 //   stardust=0, totalPrestiges=0으로 초기화한다.
+// v2→v3: 업적/통계 필드가 없으므로 achievements=[], totalClicks=0,
+//   totalLifetimeMana=lifetimeMana(이번 생 누적을 총 누적의 출발값으로), muted=false.
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
     console.warn('[save] 세이브가 객체가 아닙니다 — 무시합니다.')
@@ -154,6 +178,15 @@ export function migrate(raw: unknown): SaveData | null {
   const stardust = isV2Plus ? normalizeNonNeg(s.stardust, 0) : 0
   const totalPrestiges = isV2Plus ? normalizeNonNeg(s.totalPrestiges, 0) : 0
 
+  // v2 이하엔 업적/통계·음소거 필드가 없다 → achievements=[], totalClicks=0,
+  // totalLifetimeMana=lifetimeMana(이번 생 누적을 총 누적 출발값으로), muted=false.
+  // v3 이상은 저장된 값을 검증해 채택(누락·손상 시 동일 fallback).
+  const isV3Plus = raw.version >= 3
+  const achievements = isV3Plus ? normalizeAchievements(s.achievements) : []
+  const totalClicks = isV3Plus ? normalizeNonNeg(s.totalClicks, 0) : 0
+  const totalLifetimeMana = isV3Plus ? normalizeNonNeg(s.totalLifetimeMana, lifetimeMana) : lifetimeMana
+  const muted = isV3Plus ? s.muted === true : false
+
   return {
     version: SAVE_VERSION,
     savedAt: raw.savedAt,
@@ -167,6 +200,10 @@ export function migrate(raw: unknown): SaveData | null {
       lifetimeMana,
       stardust,
       totalPrestiges,
+      achievements,
+      totalClicks,
+      totalLifetimeMana,
+      muted,
     },
   }
 }

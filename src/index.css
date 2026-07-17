@@ -541,6 +541,172 @@ body {
   letter-spacing: 2px;
 }
 
+/* T6.2 구매 가능 하이라이트 강화 — 은은한 pulse(과하지 않게). glow가 숨 쉬듯 커졌다 줄었다. */
+@keyframes afford-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(169, 112, 255, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(169, 112, 255, 0.65);
+  }
+}
+
+.generator-buy.can-afford,
+.upgrade-card.can-afford {
+  animation: afford-pulse 1.8s ease-in-out infinite;
+}
+
+/* 모션 최소화 선호 시 pulse 제거(접근성). */
+@media (prefers-reduced-motion: reduce) {
+  .generator-buy.can-afford,
+  .upgrade-card.can-afford {
+    animation: none;
+  }
+}
+
+/* T6.1 업적 토스트 — 우하단 세로 스택. 새 토스트는 아래에서 슬라이드 인, 3초 후 소멸. */
+.achievement-toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.achievement-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #2f2547, var(--panel));
+  border: 1px solid #ffd76a;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 12px rgba(255, 200, 90, 0.25);
+  animation: toast-in 0.28s ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.achievement-toast-icon {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+
+.achievement-toast-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.achievement-toast-sub {
+  font-size: 12px;
+  color: #ffd76a;
+}
+
+/* T6.2 마일스톤 파티클 버스트 — 화면 중앙에서 이모지가 방사형으로 퍼지며 사라진다. */
+.burst-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 190;
+}
+
+.burst-origin {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+}
+
+.burst-particle {
+  position: absolute;
+  font-size: 24px;
+  will-change: transform, opacity;
+  animation: burst-fly 0.9s ease-out forwards;
+}
+
+@keyframes burst-fly {
+  from {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0) scale(0.6);
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(1.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burst-layer {
+    display: none;
+  }
+}
+
+/* T6.1 업적 목록 모달 */
+.modal--wide {
+  max-width: 560px;
+}
+
+.achievement-count {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.achievement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.achievement-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  opacity: 0.55;
+}
+
+.achievement-item--done {
+  opacity: 1;
+  border-color: #ffd76a;
+}
+
+.achievement-item-mark {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.achievement-item-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.achievement-item-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 @media (max-width: 800px) {
   .layout {
     grid-template-columns: 1fr;
