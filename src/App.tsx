@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import Header from './components/Header.tsx'
 import ClickerPanel from './components/ClickerPanel.tsx'
+import UpgradePanel from './components/UpgradePanel.tsx'
 import GeneratorList from './components/GeneratorList.tsx'
 import { startTickLoop } from './engine/tick.ts'
 
@@ -16,6 +17,7 @@ export default function App() {
           <ClickerPanel />
         </section>
         <section className="layout-right">
+          <UpgradePanel />
           <GeneratorList />
         </section>
       </main>

@@ -136,6 +136,74 @@ body {
   }
 }
 
+/* T3.1 업그레이드 패널 — 해금됐고 아직 안 산 업그레이드만 카드로 노출. */
+.upgrade-panel {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.upgrade-panel-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.upgrade-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.upgrade-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.upgrade-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.upgrade-card-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.upgrade-card-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.upgrade-card-cost {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* 구매 가능 하이라이트 — 살 수 있는 순간의 은은한 반짝임(주스). */
+.upgrade-card.can-afford {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(169, 112, 255, 0.45);
+}
+
+.upgrade-card.can-afford:hover {
+  background: var(--accent);
+}
+
+.upgrade-card.can-afford:hover .upgrade-card-desc,
+.upgrade-card.can-afford:hover .upgrade-card-cost {
+  color: var(--text);
+}
+
 .generator-list-head {
   display: flex;
   align-items: center;

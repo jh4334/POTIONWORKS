@@ -1,6 +1,49 @@
 import { describe, it, expect } from 'vitest'
-import { generatorCost, bulkCost, maxAffordable, totalMps } from './formulas.ts'
+import {
+  generatorCost,
+  bulkCost,
+  maxAffordable,
+  totalMps,
+  generatorMultiplier,
+  clickPower,
+  isUpgradeUnlocked,
+} from './formulas.ts'
 import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
+import type { UpgradeDef } from '../data/upgrades.ts'
+
+// 테스트용 업그레이드 정의(수식만 검증하므로 name/desc/cost/unlock은 의미값만 채운다).
+function mult2(generatorId: string): UpgradeDef {
+  return {
+    id: `${generatorId}-x2`,
+    name: '',
+    desc: '',
+    cost: 0,
+    unlock: { kind: 'ownedCount', generatorId, minOwned: 10 },
+    effect: { kind: 'generatorMult', generatorId, mult: 2 },
+  }
+}
+
+function synergy(sourceId: string, targetId: string, percentPerSource: number): UpgradeDef {
+  return {
+    id: `${sourceId}-${targetId}`,
+    name: '',
+    desc: '',
+    cost: 0,
+    unlock: { kind: 'ownedCount', generatorId: sourceId, minOwned: 25 },
+    effect: { kind: 'synergy', sourceId, targetId, percentPerSource },
+  }
+}
+
+function clickPercent(percent: number): UpgradeDef {
+  return {
+    id: `click-${percent}`,
+    name: '',
+    desc: '',
+    cost: 0,
+    unlock: { kind: 'totalMps', minMps: 10 },
+    effect: { kind: 'clickMpsPercent', percent },
+  }
+}
 
 // 테스트 기준(raw 합을 한 번 ceil) — bulkCost의 정답 계산을 루프로 독립 검증.
 function rawSumCeil(baseCost: number, owned: number, count: number): number {
@@ -93,5 +136,71 @@ describe('totalMps', () => {
 
   it('data에 없는 id는 무시', () => {
     expect(totalMps({ a: 5, ghost: 999 }, gens)).toBeCloseTo(0.5)
+  })
+
+  it('업그레이드 없으면 기존 값 불변', () => {
+    // purchasedUpgrades 미지정과 [] 모두 배율 1.
+    expect(totalMps({ a: 10, b: 3 }, gens, [])).toBeCloseTo(10 * 0.1 + 3 * 1)
+    expect(totalMps({ a: 10, b: 3 }, gens, [])).toBe(totalMps({ a: 10, b: 3 }, gens))
+  })
+
+  it('×2 마일스톤이 해당 티어에만 반영', () => {
+    // a는 ×2, b는 그대로: 10*0.1*2 + 3*1 = 2 + 3 = 5
+    expect(totalMps({ a: 10, b: 3 }, gens, [mult2('a')])).toBeCloseTo(5)
+  })
+
+  it('×2 마일스톤 두 개는 곱으로 누적(×4)', () => {
+    expect(totalMps({ a: 10, b: 0 }, gens, [mult2('a'), mult2('a')])).toBeCloseTo(10 * 0.1 * 4)
+  })
+
+  it('시너지: a 10개 → b 생산 +10%', () => {
+    // b 배율 (1 + 10 * 1/100) = 1.1 → 3 * 1 * 1.1 = 3.3, a는 10*0.1 = 1
+    expect(totalMps({ a: 10, b: 3 }, gens, [synergy('a', 'b', 1)])).toBeCloseTo(1 + 3.3)
+  })
+})
+
+describe('generatorMultiplier', () => {
+  it('업그레이드 없으면 1', () => {
+    expect(generatorMultiplier('a', [], {})).toBe(1)
+  })
+
+  it('×2와 시너지(+10%)가 곱으로 결합', () => {
+    // b: ×2 * (1 + 10*1/100) = 2 * 1.1 = 2.2
+    expect(generatorMultiplier('b', [mult2('b'), synergy('a', 'b', 1)], { a: 10 })).toBeCloseTo(2.2)
+  })
+
+  it('다른 티어 대상 효과는 무시', () => {
+    expect(generatorMultiplier('a', [mult2('b'), synergy('a', 'b', 1)], { a: 10 })).toBe(1)
+  })
+})
+
+describe('clickPower', () => {
+  it('업그레이드 없으면 basePower 그대로', () => {
+    expect(clickPower(1, 1000, [])).toBe(1)
+    expect(clickPower(5, 1000)).toBe(5)
+  })
+
+  it('클릭 1%: base + mps × 1%', () => {
+    // 1 + 1000 * 1/100 = 1 + 10 = 11
+    expect(clickPower(1, 1000, [clickPercent(1)])).toBeCloseTo(11)
+  })
+
+  it('clickMpsPercent는 누적 합산(1% + 1% = 2%)', () => {
+    // 1 + 1000 * 2/100 = 1 + 20 = 21
+    expect(clickPower(1, 1000, [clickPercent(1), clickPercent(1)])).toBeCloseTo(21)
+  })
+})
+
+describe('isUpgradeUnlocked', () => {
+  it('ownedCount 조건: 보유수 도달 시 해금', () => {
+    const def = mult2('a') // minOwned 10
+    expect(isUpgradeUnlocked(def, { a: 9 }, 0)).toBe(false)
+    expect(isUpgradeUnlocked(def, { a: 10 }, 0)).toBe(true)
+  })
+
+  it('totalMps 조건: MPS 도달 시 해금', () => {
+    const def = clickPercent(1) // minMps 10
+    expect(isUpgradeUnlocked(def, {}, 9.9)).toBe(false)
+    expect(isUpgradeUnlocked(def, {}, 10)).toBe(true)
   })
 })

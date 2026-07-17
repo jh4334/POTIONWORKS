@@ -1,6 +1,7 @@
 // 게임 수식 — 순수 함수만. 규칙(CLAUDE.md): 스토어/React import 금지, 단위 테스트 유지.
 // 비용 곡선 버그는 세이브를 오염시키므로 formulas.test.ts로 경계값을 고정한다.
 import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
+import type { UpgradeDef } from '../data/upgrades.ts'
 
 // ceil 정책: 비용은 항상 정수로 올림한다(표시·구매 동일 값).
 // 단건 구매 가격 = baseCost × 1.15^보유수.
@@ -37,11 +38,63 @@ export function maxAffordable(baseCost: number, owned: number, mana: number): nu
   return n
 }
 
-// 전체 MPS. 아직 배율 없음(M3에서 마일스톤·시너지 배율로 확장).
-export function totalMps(counts: Record<string, number>, generators: GeneratorDef[]): number {
+// 특정 티어의 생산 배율. 구매된 업그레이드에서:
+//   - generatorMult(×2 마일스톤): 곱으로 누적
+//   - synergy: (1 + sourceCount × percentPerSource/100) 곱
+// 다른 티어를 대상으로 한 효과는 무시한다.
+export function generatorMultiplier(
+  generatorId: string,
+  purchasedUpgrades: UpgradeDef[],
+  counts: Record<string, number>,
+): number {
+  let mult = 1
+  for (const u of purchasedUpgrades) {
+    const e = u.effect
+    if (e.kind === 'generatorMult' && e.generatorId === generatorId) {
+      mult *= e.mult
+    } else if (e.kind === 'synergy' && e.targetId === generatorId) {
+      const sourceCount = counts[e.sourceId] ?? 0
+      mult *= 1 + (sourceCount * e.percentPerSource) / 100
+    }
+  }
+  return mult
+}
+
+// 전체 MPS = Σ (보유수 × 개당 baseMps × 티어 배율).
+// purchasedUpgrades 미지정(기본 [])이면 배율 1 — 업그레이드 없을 때 기존 값과 동일.
+export function totalMps(
+  counts: Record<string, number>,
+  generators: GeneratorDef[],
+  purchasedUpgrades: UpgradeDef[] = [],
+): number {
   let total = 0
   for (const g of generators) {
-    total += (counts[g.id] ?? 0) * g.baseMps
+    total += (counts[g.id] ?? 0) * g.baseMps * generatorMultiplier(g.id, purchasedUpgrades, counts)
   }
   return total
+}
+
+// 클릭당 획득량 = 기본 클릭력 + MPS × (clickMpsPercent 합 / 100).
+// 업그레이드가 없으면 basePower 그대로.
+export function clickPower(
+  basePower: number,
+  mps: number,
+  purchasedUpgrades: UpgradeDef[] = [],
+): number {
+  let percent = 0
+  for (const u of purchasedUpgrades) {
+    if (u.effect.kind === 'clickMpsPercent') percent += u.effect.percent
+  }
+  return basePower + (mps * percent) / 100
+}
+
+// 해금 조건 판정(순수). 시설 보유수 또는 총 MPS 기준.
+export function isUpgradeUnlocked(
+  def: UpgradeDef,
+  counts: Record<string, number>,
+  mps: number,
+): boolean {
+  const c = def.unlock
+  if (c.kind === 'ownedCount') return (counts[c.generatorId] ?? 0) >= c.minOwned
+  return mps >= c.minMps
 }
