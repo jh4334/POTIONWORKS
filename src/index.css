@@ -1,0 +1,819 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --bg: #1a1425;
+  --panel: #251c36;
+  --border: #3d2f57;
+  --text: #ece5f8;
+  --text-dim: #9d92b5;
+  --accent: #a970ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#root,
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.header-stats {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+}
+
+.header-mana {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.header-mps {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* T5.1 각성 재화 표시 — stardust>0 또는 각성 가능할 때만 노출. */
+.header-stardust {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffd76a;
+  cursor: default;
+}
+
+/* T4.1/T4.2 헤더 액션(저장·백업) */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-saved-at {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.header-button {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.1s ease;
+}
+
+.header-button:hover {
+  border-color: var(--accent);
+}
+
+/* T4.2/T4.3 모달 공통 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 100;
+}
+
+.modal {
+  width: 100%;
+  max-width: 440px;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-title {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.modal-body {
+  margin: 0 0 4px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.modal-sub {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.offline-amount {
+  color: var(--accent);
+}
+
+.modal-label {
+  display: block;
+  margin: 12px 0 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.modal-textarea {
+  width: 100%;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.modal-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #ff7b7b;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.modal-actions--left {
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+.modal-button {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+
+.modal-button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.modal-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.modal-button--primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  min-height: 0;
+}
+
+.layout-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 24px;
+}
+
+.layout-right {
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.clicker-panel {
+  text-align: center;
+}
+
+.cauldron-button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  background: radial-gradient(circle at 35% 30%, #35284e, var(--panel));
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  justify-content: center;
+  transition: transform 0.05s ease;
+}
+
+.cauldron-button:hover {
+  border-color: var(--accent);
+}
+
+.cauldron-button:active {
+  transform: scale(0.96);
+}
+
+.cauldron-emoji {
+  font-size: 64px;
+}
+
+/* T1.2 클릭 숫자 팝: 클릭 좌표에서 위로 떠오르며 페이드아웃(약 0.8s). */
+.click-pop {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  animation: click-pop-rise 0.8s ease-out forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes click-pop-rise {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 60px));
+  }
+}
+
+/* T3.1 업그레이드 패널 — 해금됐고 아직 안 산 업그레이드만 카드로 노출. */
+.upgrade-panel {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.upgrade-panel-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.upgrade-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.upgrade-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.upgrade-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.upgrade-card-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.upgrade-card-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.upgrade-card-cost {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* 구매 가능 하이라이트 — 살 수 있는 순간의 은은한 반짝임(주스). */
+.upgrade-card.can-afford {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(169, 112, 255, 0.45);
+}
+
+.upgrade-card.can-afford:hover {
+  background: var(--accent);
+}
+
+.upgrade-card.can-afford:hover .upgrade-card-desc,
+.upgrade-card.can-afford:hover .upgrade-card-cost {
+  color: var(--text);
+}
+
+/* T5.1 각성 패널 — 클릭 패널 하단. */
+.prestige-panel {
+  width: 220px;
+  text-align: center;
+}
+
+.prestige-button {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #2a1e08;
+  background: linear-gradient(135deg, #ffe08a, #ffb648);
+  border: 1px solid #ffd76a;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(255, 200, 90, 0.5);
+  transition: filter 0.1s ease, transform 0.05s ease;
+}
+
+.prestige-button:hover {
+  filter: brightness(1.08);
+}
+
+.prestige-button:active {
+  transform: scale(0.97);
+}
+
+.prestige-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.prestige-progress-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.prestige-progress-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.generator-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.generator-list-title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.generator-list-placeholder {
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+/* T2.3 구매 수량 토글 (×1 / ×10 / ×MAX) */
+.buy-amount-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.buy-amount-option {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.buy-amount-option:hover {
+  color: var(--text);
+}
+
+.buy-amount-option.active {
+  color: var(--text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* 시설 행 */
+.generator-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.generator-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.generator-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.generator-name {
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.generator-owned {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.generator-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.generator-buy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 84px;
+  padding: 6px 10px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.generator-buy:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.generator-buy-count {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.generator-buy-cost {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* T2.3 구매 가능 하이라이트 — 살 수 있는 순간의 은은한 반짝임(주스). */
+.generator-row.can-afford {
+  border-color: var(--accent);
+}
+
+.generator-buy.can-afford {
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: 0 0 10px rgba(169, 112, 255, 0.45);
+}
+
+.generator-buy.can-afford:hover {
+  background: var(--accent);
+}
+
+/* ??? 실루엣(아직 해금 안 된 다음-다음 티어) */
+.generator-row--locked {
+  opacity: 0.6;
+}
+
+.generator-row--locked .generator-name {
+  color: var(--text-dim);
+  letter-spacing: 2px;
+}
+
+/* T6.2 구매 가능 하이라이트 강화 — 은은한 pulse(과하지 않게). glow가 숨 쉬듯 커졌다 줄었다. */
+@keyframes afford-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(169, 112, 255, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(169, 112, 255, 0.65);
+  }
+}
+
+.generator-buy.can-afford,
+.upgrade-card.can-afford {
+  animation: afford-pulse 1.8s ease-in-out infinite;
+}
+
+/* 모션 최소화 선호 시 pulse 제거(접근성). */
+@media (prefers-reduced-motion: reduce) {
+  .generator-buy.can-afford,
+  .upgrade-card.can-afford {
+    animation: none;
+  }
+}
+
+/* T6.1 업적 토스트 — 우하단 세로 스택. 새 토스트는 아래에서 슬라이드 인, 3초 후 소멸. */
+.achievement-toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.achievement-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #2f2547, var(--panel));
+  border: 1px solid #ffd76a;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 12px rgba(255, 200, 90, 0.25);
+  animation: toast-in 0.28s ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.achievement-toast-icon {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+
+.achievement-toast-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.achievement-toast-sub {
+  font-size: 12px;
+  color: #ffd76a;
+}
+
+/* T6.2 마일스톤 파티클 버스트 — 화면 중앙에서 이모지가 방사형으로 퍼지며 사라진다. */
+.burst-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 190;
+}
+
+.burst-origin {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+}
+
+.burst-particle {
+  position: absolute;
+  font-size: 24px;
+  will-change: transform, opacity;
+  animation: burst-fly 0.9s ease-out forwards;
+}
+
+@keyframes burst-fly {
+  from {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0) scale(0.6);
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(1.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burst-layer {
+    display: none;
+  }
+}
+
+/* T6.1 업적 목록 모달 */
+.modal--wide {
+  max-width: 560px;
+}
+
+.achievement-count {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.achievement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.achievement-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  opacity: 0.55;
+}
+
+.achievement-item--done {
+  opacity: 1;
+  border-color: #ffd76a;
+}
+
+.achievement-item-mark {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.achievement-item-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.achievement-item-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+@media (max-width: 800px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .layout-right {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* T8.2 설정 모달 */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-row-label {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.modal-button--danger {
+  background: #b0324a;
+  border-color: #b0324a;
+}
+
+.modal-button--danger:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.settings-reset-warn {
+  margin: 8px 0 0;
+}
+
+.settings-link {
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.settings-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.settings-version {
+  font-weight: 700;
+}
+
+/* T8.2 타이틀 오버레이 — 최초 방문 1회 */
+.title-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: radial-gradient(circle at 50% 40%, #2b2140, var(--bg) 70%);
+  z-index: 200;
+}
+
+.title-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.title-logo {
+  margin: 0;
+  font-size: clamp(32px, 8vw, 56px);
+  color: var(--accent);
+}
+
+.title-sub {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-dim);
+}
+
+.title-start {
+  margin-top: 16px;
+  padding: 12px 32px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: filter 0.1s ease;
+}
+
+.title-start:hover {
+  filter: brightness(1.1);
+}
