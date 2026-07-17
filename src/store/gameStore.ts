@@ -92,6 +92,9 @@ export interface GameState {
   dismissToast: (id: number) => void
   // 음소거 토글(T6.2). 세이브 대상 값이라 액션에서 변형한다.
   toggleMuted: () => void
+  // 디버그 전용(debug/cheats.ts): 마나 +n (누적 마나 통계도 함께 증가).
+  // ⚠ 프로덕션 코드에서 호출 금지 — 개발/검증용 치트(window.cheats)에서만 사용한다.
+  debugAddMana: (n: number) => void
 }
 
 function initialGenerators(): Record<string, number> {
@@ -335,4 +338,15 @@ export const useGameStore = create<GameState>()((set) => ({
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   toggleMuted: () => set((s) => ({ muted: !s.muted })),
+
+  // ⚠ 디버그 전용 — 프로덕션 코드에서 호출 금지(치트 도구 debug/cheats.ts에서만 사용).
+  // click과 동일하게 순수 획득으로 취급: mana + 각성 기준(lifetimeMana) + 총 누적 통계도 함께 올린다.
+  debugAddMana: (n) =>
+    set((s) =>
+      withAchievements(s, {
+        mana: s.mana + n,
+        lifetimeMana: s.lifetimeMana + n,
+        totalLifetimeMana: s.totalLifetimeMana + n,
+      }),
+    ),
 }))

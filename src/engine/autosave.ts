@@ -5,11 +5,19 @@ import { saveToLocal, loadFromLocal } from './save.ts'
 import { offlineEarnings } from './offline.ts'
 import { AUTOSAVE_INTERVAL_MS, OFFLINE_MIN_MS } from '../data/config.ts'
 
+// 앱 시작 시 세이브가 있었는지(=재방문인지) 기록. 타이틀 오버레이는 최초 방문에서만 띄운다(T8.2).
+// loadGame이 렌더 전에 1회 실행되므로, App 최초 마운트 시점에 이 값이 확정돼 있다.
+let hadSave = false
+export function hadSaveOnLoad(): boolean {
+  return hadSave
+}
+
 // 앱 시작 시 1회: 세이브 로드 → 오프라인 수익 지급.
 // StrictMode 밖(main.tsx 모듈 로드 시점)에서 호출해 이중 실행을 피한다.
 export function loadGame(): void {
   const save = loadFromLocal()
   if (!save) return // 첫 플레이 — 초기 상태 유지, 팝업 없음.
+  hadSave = true
 
   useGameStore.getState().loadSave(save)
 

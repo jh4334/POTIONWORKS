@@ -6,6 +6,7 @@ import { PRESTIGE_THRESHOLD, STARDUST_MULT_PER } from '../data/config.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
 import SaveModal from './SaveModal.tsx'
 import AchievementsModal from './AchievementsModal.tsx'
+import SettingsModal from './SettingsModal.tsx'
 
 // 마지막 저장 시각 표시용 포맷(HH:MM:SS).
 function formatClock(ms: number): string {
@@ -25,15 +26,15 @@ export default function Header() {
   const showStardust = stardust > 0 || canPrestige
   const bonusPercent = Math.round(stardust * STARDUST_MULT_PER * 100)
 
-  // 업적 진행도 + 음소거는 스토어 구독. 업적수는 배열 길이만 파생 구독(달성 시에만 변함).
+  // 업적 진행도는 스토어 구독. 업적수는 배열 길이만 파생 구독(달성 시에만 변함).
+  // 음소거는 설정 모달(SettingsModal)에서 다룬다.
   const achievementCount = useGameStore((s) => s.achievements.length)
-  const muted = useGameStore((s) => s.muted)
-  const toggleMuted = useGameStore((s) => s.toggleMuted)
 
-  // 수동 저장 시각 + 백업/업적 모달 열림은 순수 UI 상태 → 컴포넌트 로컬로 관리(스토어 비오염).
+  // 수동 저장 시각 + 백업/업적/설정 모달 열림은 순수 UI 상태 → 컴포넌트 로컬로 관리(스토어 비오염).
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [showBackup, setShowBackup] = useState(false)
   const [showAchievements, setShowAchievements] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   const handleSave = () => {
     const now = Date.now()
@@ -64,24 +65,30 @@ export default function Header() {
         >
           🏆 {achievementCount}/{ACHIEVEMENTS.length}
         </button>
-        <button
-          type="button"
-          className="header-button"
-          onClick={toggleMuted}
-          aria-label={muted ? '음소거 해제' : '음소거'}
-          title={muted ? '음소거 해제' : '음소거'}
-        >
-          {muted ? '🔇' : '🔊'}
-        </button>
         <button type="button" className="header-button" onClick={handleSave}>
           저장
         </button>
-        <button type="button" className="header-button" onClick={() => setShowBackup(true)}>
-          백업
+        <button
+          type="button"
+          className="header-button"
+          onClick={() => setShowSettings(true)}
+          aria-label="설정"
+          title="설정"
+        >
+          ⚙️
         </button>
       </div>
       {showBackup && <SaveModal onClose={() => setShowBackup(false)} />}
       {showAchievements && <AchievementsModal onClose={() => setShowAchievements(false)} />}
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          onOpenBackup={() => {
+            setShowSettings(false)
+            setShowBackup(true)
+          }}
+        />
+      )}
     </header>
   )
 }

@@ -717,3 +717,103 @@ body {
     border-top: 1px solid var(--border);
   }
 }
+
+/* T8.2 설정 모달 */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-row-label {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.modal-button--danger {
+  background: #b0324a;
+  border-color: #b0324a;
+}
+
+.modal-button--danger:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.settings-reset-warn {
+  margin: 8px 0 0;
+}
+
+.settings-link {
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.settings-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.settings-version {
+  font-weight: 700;
+}
+
+/* T8.2 타이틀 오버레이 — 최초 방문 1회 */
+.title-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: radial-gradient(circle at 50% 40%, #2b2140, var(--bg) 70%);
+  z-index: 200;
+}
+
+.title-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.title-logo {
+  margin: 0;
+  font-size: clamp(32px, 8vw, 56px);
+  color: var(--accent);
+}
+
+.title-sub {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-dim);
+}
+
+.title-start {
+  margin-top: 16px;
+  padding: 12px 32px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: filter 0.1s ease;
+}
+
+.title-start:hover {
+  filter: brightness(1.1);
+}
