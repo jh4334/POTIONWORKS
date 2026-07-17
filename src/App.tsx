@@ -3,11 +3,14 @@ import Header from './components/Header.tsx'
 import ClickerPanel from './components/ClickerPanel.tsx'
 import UpgradePanel from './components/UpgradePanel.tsx'
 import GeneratorList from './components/GeneratorList.tsx'
+import OfflineModal from './components/OfflineModal.tsx'
 import { startTickLoop } from './engine/tick.ts'
+import { startAutosave } from './engine/autosave.ts'
 
 export default function App() {
-  // 게임 루프 시작. cleanup으로 StrictMode 이중 mount에도 인터벌이 중복 생성되지 않는다.
+  // 게임 루프 + 자동저장 시작. cleanup으로 StrictMode 이중 mount에도 인터벌이 중복 생성되지 않는다.
   useEffect(() => startTickLoop(), [])
+  useEffect(() => startAutosave(), [])
 
   return (
     <div className="app">
@@ -21,6 +24,7 @@ export default function App() {
           <GeneratorList />
         </section>
       </main>
+      <OfflineModal />
     </div>
   )
 }

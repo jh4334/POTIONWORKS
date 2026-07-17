@@ -57,6 +57,144 @@ body {
   color: var(--text-dim);
 }
 
+/* T4.1/T4.2 헤더 액션(저장·백업) */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-saved-at {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.header-button {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.1s ease;
+}
+
+.header-button:hover {
+  border-color: var(--accent);
+}
+
+/* T4.2/T4.3 모달 공통 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 100;
+}
+
+.modal {
+  width: 100%;
+  max-width: 440px;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-title {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.modal-body {
+  margin: 0 0 4px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.modal-sub {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.offline-amount {
+  color: var(--accent);
+}
+
+.modal-label {
+  display: block;
+  margin: 12px 0 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.modal-textarea {
+  width: 100%;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.modal-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #ff7b7b;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.modal-actions--left {
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+.modal-button {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+
+.modal-button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.modal-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.modal-button--primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
 .layout {
   flex: 1;
   display: grid;
