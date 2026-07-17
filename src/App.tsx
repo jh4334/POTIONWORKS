@@ -1,8 +1,13 @@
+import { useEffect } from 'react'
 import Header from './components/Header.tsx'
 import ClickerPanel from './components/ClickerPanel.tsx'
 import GeneratorList from './components/GeneratorList.tsx'
+import { startTickLoop } from './engine/tick.ts'
 
 export default function App() {
+  // 게임 루프 시작. cleanup으로 StrictMode 이중 mount에도 인터벌이 중복 생성되지 않는다.
+  useEffect(() => startTickLoop(), [])
+
   return (
     <div className="app">
       <Header />

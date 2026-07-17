@@ -136,14 +136,144 @@ body {
   }
 }
 
+.generator-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
 .generator-list-title {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 16px;
 }
 
 .generator-list-placeholder {
   color: var(--text-dim);
   font-size: 14px;
+}
+
+/* T2.3 구매 수량 토글 (×1 / ×10 / ×MAX) */
+.buy-amount-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.buy-amount-option {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.buy-amount-option:hover {
+  color: var(--text);
+}
+
+.buy-amount-option.active {
+  color: var(--text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* 시설 행 */
+.generator-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.generator-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.generator-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.generator-name {
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.generator-owned {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.generator-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.generator-buy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 84px;
+  padding: 6px 10px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.generator-buy:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.generator-buy-count {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.generator-buy-cost {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* T2.3 구매 가능 하이라이트 — 살 수 있는 순간의 은은한 반짝임(주스). */
+.generator-row.can-afford {
+  border-color: var(--accent);
+}
+
+.generator-buy.can-afford {
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: 0 0 10px rgba(169, 112, 255, 0.45);
+}
+
+.generator-buy.can-afford:hover {
+  background: var(--accent);
+}
+
+/* ??? 실루엣(아직 해금 안 된 다음-다음 티어) */
+.generator-row--locked {
+  opacity: 0.6;
+}
+
+.generator-row--locked .generator-name {
+  color: var(--text-dim);
+  letter-spacing: 2px;
 }
 
 @media (max-width: 800px) {
