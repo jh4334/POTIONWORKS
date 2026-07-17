@@ -13,8 +13,11 @@ function formatClock(ms: number): string {
 }
 
 export default function Header() {
-  const mana = useGameStore((s) => s.mana)
-  const mps = useGameStore((s) => s.manaPerSecond)
+  // 표시 문자열을 구독한다 — mana는 100ms마다 소수점이 변하지만 정수 내림 후 포맷한 문자열은
+  // 훨씬 드물게 바뀌므로, 문자열이 같으면 리렌더가 발생하지 않는다.
+  const manaText = useGameStore((s) => formatNumber(Math.floor(s.mana)))
+  // mps는 구매 시에만 변하지만 일관성을 위해 동일하게 표시 문자열을 구독한다.
+  const mpsText = useGameStore((s) => formatNumber(s.manaPerSecond))
   const stardust = useGameStore((s) => s.stardust)
   // 각성 가능 여부(누적 마나 임계 도달). 스타더스트 표시 노출 조건에 사용.
   const canPrestige = useGameStore((s) => s.lifetimeMana >= PRESTIGE_THRESHOLD)
@@ -42,9 +45,9 @@ export default function Header() {
     <header className="header">
       <h1 className="header-title">🧪 POTIONWORKS</h1>
       <div className="header-stats">
-        {/* 마나는 100ms마다 갱신되므로 표시는 정수 내림(소수점 깜빡임 방지). */}
-        <span className="header-mana">{formatNumber(Math.floor(mana))} 마나</span>
-        <span className="header-mps">초당 {formatNumber(mps)}</span>
+        {/* 마나는 100ms마다 갱신되므로 표시는 정수 내림(소수점 깜빡임 방지) — 셀렉터에서 이미 포맷됨. */}
+        <span className="header-mana">{manaText} 마나</span>
+        <span className="header-mps">초당 {mpsText}</span>
         {showStardust && (
           <span className="header-stardust" title={`전체 생산 +${bonusPercent}%`}>
             ✨ {formatNumber(stardust)}
