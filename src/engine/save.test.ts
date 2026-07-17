@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   serialize,
   deserialize,
@@ -6,12 +6,20 @@ import {
   toSaveData,
   exportSave,
   importSave,
+  loadFromLocalResult,
+  saveToLocal,
   SAVE_VERSION,
   type SaveState,
 } from './save.ts'
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
+import {
+  SAVE_KEY,
+  SAVE_CORRUPT_KEY,
+  GENERATOR_MAX,
+  INITIAL_CLICK_POWER,
+} from '../data/config.ts'
 
 const KNOWN_GEN = GENERATORS[0].id // 'apprentice'
 const KNOWN_UP = UPGRADES[0].id // 'apprentice-x2-10'
@@ -76,7 +84,15 @@ describe('migrate', () => {
     expect(migrate({})).toBeNull() // version 없음
     expect(migrate({ version: 1 })).toBeNull() // savedAt/state 없음
     expect(migrate({ version: 1, savedAt: 1 })).toBeNull() // state 없음
-    expect(migrate({ version: 1, savedAt: 1, state: {} })).toBeNull() // 필수 수치 없음
+  })
+
+  it('빈 state는 거부하지 않고 안전 기본값으로 정규화(D-1.1: 필드 손상으로 세이브를 파괴하지 않음)', () => {
+    // 이전엔 필수 수치가 없으면 null이었으나, 이제 수치는 거부 대신 정규화한다.
+    const out = migrate({ version: 1, savedAt: 1, state: {} })
+    expect(out).not.toBeNull()
+    expect(out!.state.mana).toBe(0)
+    expect(out!.state.basePower).toBe(INITIAL_CLICK_POWER)
+    expect(out!.state.lastTick).toBe(1) // savedAt로 폴백
   })
 
   it('알 수 없는 미래 버전은 null', () => {
@@ -243,6 +259,125 @@ describe('migrate', () => {
 describe('deserialize 방어', () => {
   it('JSON이 아니면 null', () => {
     expect(deserialize('{not json')).toBeNull()
+  })
+})
+
+describe('migrate 검증 강화(D-1.1)', () => {
+  it('음수/NaN mana는 0으로, 음수/NaN basePower는 INITIAL_CLICK_POWER로 정규화(거부하지 않음)', () => {
+    const out = migrate({
+      version: 3,
+      savedAt: FIXED_NOW,
+      state: { ...validState(), mana: -100, basePower: -5 },
+    })
+    expect(out).not.toBeNull() // 필드 손상으로 세이브 전체를 버리지 않는다
+    expect(out!.state.mana).toBe(0)
+    expect(out!.state.basePower).toBe(INITIAL_CLICK_POWER)
+  })
+
+  it('mana가 NaN이면 0, lifetimeMana fallback도 0(v1)', () => {
+    const out = migrate({
+      version: 1,
+      savedAt: FIXED_NOW,
+      state: { mana: NaN, basePower: 1, lastTick: 5, buyAmount: 1, generators: {}, upgrades: [] },
+    })
+    expect(out!.state.mana).toBe(0)
+    expect(out!.state.lifetimeMana).toBe(0)
+  })
+
+  it('generators: 소수는 내림, 1e308은 상한(GENERATOR_MAX) 클램프, Infinity는 제외', () => {
+    const out = migrate({
+      version: 3,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        generators: { [KNOWN_GEN]: 5.7, [GENERATORS[1].id]: 1e308, [GENERATORS[2].id]: Infinity },
+      },
+    })
+    expect(out!.state.generators[KNOWN_GEN]).toBe(5) // 소수 내림
+    expect(out!.state.generators[GENERATORS[1].id]).toBe(GENERATOR_MAX) // 상한 클램프
+    expect(out!.state.generators[GENERATORS[2].id]).toBeUndefined() // Infinity 제외
+  })
+
+  it('stardust/totalPrestiges/totalClicks는 정수화(내림)', () => {
+    const out = migrate({
+      version: 3,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        lifetimeMana: 10,
+        stardust: 4.9,
+        totalPrestiges: 2.9,
+        totalClicks: 7.9,
+        totalLifetimeMana: 10,
+        muted: false,
+      },
+    })
+    expect(out!.state.stardust).toBe(4)
+    expect(out!.state.totalPrestiges).toBe(2)
+    expect(out!.state.totalClicks).toBe(7)
+  })
+})
+
+// 인메모리 localStorage 스텁(node 환경엔 localStorage가 없다).
+function installLocalStorage(): void {
+  const map = new Map<string, string>()
+  const stub = {
+    getItem: (k: string) => (map.has(k) ? map.get(k)! : null),
+    setItem: (k: string, v: string) => void map.set(k, String(v)),
+    removeItem: (k: string) => void map.delete(k),
+    clear: () => map.clear(),
+    key: (i: number) => [...map.keys()][i] ?? null,
+    get length() {
+      return map.size
+    },
+  }
+  Object.defineProperty(globalThis, 'localStorage', { value: stub, configurable: true, writable: true })
+}
+
+describe('loadFromLocalResult 손상 보존(D-1.1)', () => {
+  beforeEach(() => installLocalStorage())
+  afterEach(() => {
+    delete (globalThis as { localStorage?: unknown }).localStorage
+  })
+
+  it('세이브 없으면 empty', () => {
+    expect(loadFromLocalResult()).toEqual({ status: 'empty' })
+  })
+
+  it('정상 세이브면 ok + save', () => {
+    localStorage.setItem(SAVE_KEY, serialize(makeState(), FIXED_NOW))
+    const res = loadFromLocalResult()
+    expect(res.status).toBe('ok')
+  })
+
+  it('손상 세이브면 corrupt + 원본을 corrupt 키에 보존(초기화되지 않음)', () => {
+    const rawCorrupt = '{broken json not valid'
+    localStorage.setItem(SAVE_KEY, rawCorrupt)
+    const res = loadFromLocalResult()
+    expect(res.status).toBe('corrupt')
+    // 원본은 파괴되지 않고 손상 백업 키에 보존된다.
+    expect(localStorage.getItem(SAVE_CORRUPT_KEY)).toBe(rawCorrupt)
+    // 원본 키도 여전히 그대로(덮어쓰지 않음).
+    expect(localStorage.getItem(SAVE_KEY)).toBe(rawCorrupt)
+  })
+})
+
+describe('saveToLocal 유한성 가드(D-1.1)', () => {
+  beforeEach(() => installLocalStorage())
+  afterEach(() => {
+    delete (globalThis as { localStorage?: unknown }).localStorage
+  })
+
+  it('비유한 수치가 있으면 저장을 스킵(마지막 정상 세이브 보호)', () => {
+    // 먼저 정상 세이브를 남긴다.
+    saveToLocal(makeState(), FIXED_NOW)
+    const good = localStorage.getItem(SAVE_KEY)
+    expect(good).not.toBeNull()
+
+    // Infinity가 섞인 상태로 저장 시도 → 스킵되어 이전 정상 세이브가 유지된다.
+    const broken: SaveState = { ...makeState(), mana: Infinity }
+    saveToLocal(broken, FIXED_NOW + 1000)
+    expect(localStorage.getItem(SAVE_KEY)).toBe(good)
   })
 })
 

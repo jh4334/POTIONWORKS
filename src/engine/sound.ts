@@ -10,6 +10,8 @@ let muted = false
 // AudioContext는 지연 생성(첫 재생 시). SSR/미지원 환경에서도 모듈 로드가 깨지지 않게 방어.
 function getContext(): AudioContext | null {
   if (muted) return null
+  // 닫힌 컨텍스트(탭 정책·모바일 백그라운드로 close된 경우)는 재생성을 유도한다.
+  if (ctx && ctx.state === 'closed') ctx = null
   if (ctx) return ctx
   try {
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
@@ -22,25 +24,30 @@ function getContext(): AudioContext | null {
 }
 
 // 하나의 오실레이터로 짧은 톤을 낸다. gain 엔벨로프로 클릭 노이즈 없이 감쇠.
+// 전체를 try/catch로 감싼다 — 사운드는 부가 기능이라 어떤 실패든 게임 흐름을 막지 않고 무음으로 넘긴다.
 function tone(freq: number, durationMs: number, peak: number, type: OscillatorType): void {
-  const audio = getContext()
-  if (!audio) return
-  // 정책상 suspended면 깨운다(사용자 제스처 흐름에서 호출되므로 허용됨).
-  if (audio.state === 'suspended') void audio.resume()
+  try {
+    const audio = getContext()
+    if (!audio) return
+    // 정책상 suspended면 깨운다(사용자 제스처 흐름에서 호출되므로 허용됨). 실패는 무시.
+    if (audio.state === 'suspended') audio.resume().catch(() => {})
 
-  const now = audio.currentTime
-  const dur = durationMs / 1000
-  const osc = audio.createOscillator()
-  const gain = audio.createGain()
-  osc.type = type
-  osc.frequency.setValueAtTime(freq, now)
-  // 빠른 어택 + 지수 감쇠(0으로 가면 exponentialRamp가 죽으므로 아주 작은 값으로).
-  gain.gain.setValueAtTime(0.0001, now)
-  gain.gain.exponentialRampToValueAtTime(peak, now + 0.005)
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + dur)
-  osc.connect(gain).connect(audio.destination)
-  osc.start(now)
-  osc.stop(now + dur + 0.02)
+    const now = audio.currentTime
+    const dur = durationMs / 1000
+    const osc = audio.createOscillator()
+    const gain = audio.createGain()
+    osc.type = type
+    osc.frequency.setValueAtTime(freq, now)
+    // 빠른 어택 + 지수 감쇠(0으로 가면 exponentialRamp가 죽으므로 아주 작은 값으로).
+    gain.gain.setValueAtTime(0.0001, now)
+    gain.gain.exponentialRampToValueAtTime(peak, now + 0.005)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur)
+    osc.connect(gain).connect(audio.destination)
+    osc.start(now)
+    osc.stop(now + dur + 0.02)
+  } catch {
+    // 무음 실패(미지원·닫힌 컨텍스트·정책 차단 등) — 게임은 계속된다.
+  }
 }
 
 // 클릭: 짧고 낮은 pop, 낮은 볼륨(연타해도 피곤하지 않게).

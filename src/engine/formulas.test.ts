@@ -94,6 +94,14 @@ describe('bulkCost', () => {
     expect(bulkCost(15, 0, 0)).toBe(0)
     expect(bulkCost(15, 0, -3)).toBe(0)
   })
+
+  it('count===1은 generatorCost와 완전 일치(큰 보유수 경계에서도, D-2)', () => {
+    // 등비합 부동소수 오차로 ~2e15+에서 1 어긋나던 경계를 단락 처리로 없앤다.
+    for (const owned of [0, 1, 7, 50, 100, 200, 260]) {
+      expect(bulkCost(15, owned, 1)).toBe(generatorCost(15, owned))
+      expect(bulkCost(1_400_000, owned, 1)).toBe(generatorCost(1_400_000, owned))
+    }
+  })
 })
 
 describe('maxAffordable', () => {
@@ -122,6 +130,24 @@ describe('maxAffordable', () => {
     const cost1 = generatorCost(15, owned)
     expect(maxAffordable(15, owned, cost1 - 1)).toBe(0)
     expect(maxAffordable(15, owned, cost1)).toBe(1)
+  })
+
+  it('비유한 마나(Infinity/NaN)는 0 — 무한루프/프리즈 차단(D-2)', () => {
+    expect(maxAffordable(15, 0, Infinity)).toBe(0)
+    expect(maxAffordable(15, 0, NaN)).toBe(0)
+    expect(maxAffordable(15, 0, -Infinity)).toBe(0)
+  })
+
+  it('1개-구매 가드는 bulkCost(…,1) 기준(=generatorCost)으로 통일', () => {
+    // bulkCost(15,0,1)=15와 정확히 같은 경계에서 0↔1이 갈린다.
+    expect(maxAffordable(15, 0, bulkCost(15, 0, 1) - 1)).toBe(0)
+    expect(maxAffordable(15, 0, bulkCost(15, 0, 1))).toBe(1)
+  })
+
+  it('아주 큰(유한) 마나도 프리즈 없이 유한 개수를 반환', () => {
+    const n = maxAffordable(15, 0, 1e300)
+    expect(Number.isFinite(n)).toBe(true)
+    expect(n).toBeGreaterThan(0)
   })
 })
 
@@ -191,6 +217,12 @@ describe('stardustFor', () => {
     // 3.9e9 → sqrt(3.9)=1.97 → 1, 8.9e9 → sqrt(8.9)=2.98 → 2
     expect(stardustFor(3.9e9)).toBe(1)
     expect(stardustFor(8.9e9)).toBe(2)
+  })
+
+  it('비유한 입력(NaN/Infinity)은 0 (NaN이 임계 비교를 통과하는 문제 방어, D-2)', () => {
+    expect(stardustFor(NaN)).toBe(0)
+    expect(stardustFor(Infinity)).toBe(0)
+    expect(stardustFor(-Infinity)).toBe(0)
   })
 })
 

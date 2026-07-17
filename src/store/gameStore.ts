@@ -1,5 +1,12 @@
 import { create } from 'zustand'
-import { INITIAL_CLICK_POWER, PRESTIGE_THRESHOLD, ACHIEVEMENT_CHECK_INTERVAL_MS } from '../data/config.ts'
+import {
+  INITIAL_CLICK_POWER,
+  PRESTIGE_THRESHOLD,
+  ACHIEVEMENT_CHECK_INTERVAL_MS,
+  MAX_TICK_CATCHUP_MS,
+  TICK_REANCHOR_TOLERANCE_MS,
+} from '../data/config.ts'
+import { offlineEarnings } from '../engine/offline.ts'
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES, resolveUpgrades } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
@@ -60,6 +67,9 @@ export interface GameState {
   muted: boolean
   // 오프라인 수익 팝업(세이브 비포함 UI 상태). null이면 팝업 없음.
   offlineGain: OfflineGain | null
+  // 세이브 로드 실패(세이브 비포함 UI 상태). true면 App이 1회성 안내를 띄운다.
+  // 원본은 손상 백업 키에 보존됐고 진행은 초기화되지 않았음을 알린다(D-1.1).
+  loadFailed: boolean
   // 업적 토스트 큐(세이브 비포함 UI 상태). 여러 개 동시 달성 시 세로 스택.
   toasts: AchievementToast[]
   // 마일스톤 이펙트 트리거(세이브 비포함). 값이 바뀔 때마다 BurstEffect가 파티클 버스트를 낸다.
@@ -82,8 +92,13 @@ export interface GameState {
   hardReset: () => void
   // 오프라인 수익 지급: 마나 적립 + lastTick=now(이중 지급 금지) + 팝업 상태 세팅.
   applyOfflineEarnings: (amount: number, now: number, elapsedMs: number) => void
+  // 60초 미만 부재 조용한 지급(D-1.5): 마나 적립 + lastTick=now, 팝업 없음. 이중 지급 금지.
+  applySilentEarnings: (amount: number, now: number) => void
   // 오프라인 팝업 닫기.
   dismissOffline: () => void
+  // 세이브 로드 실패 표시 세팅/해제(loadGame이 corrupt 감지 시 mark, App 배너 닫기 시 dismiss).
+  markLoadFailed: () => void
+  dismissLoadFailed: () => void
   // 각성(T5.1): 조건(lifetimeMana >= 임계) 충족 시 stardust += stardustFor(lifetimeMana),
   //   totalPrestiges += 1, 그리고 마나/시설/업그레이드/buyAmount/lifetimeMana 초기화.
   //   유지: stardust, totalPrestiges, 업적·통계. 리셋 후 파생값(MPS·clickPower) 재계산.
@@ -133,6 +148,7 @@ function createInitialState() {
     totalLifetimeMana: 0,
     muted: false,
     offlineGain: null as OfflineGain | null,
+    loadFailed: false,
     toasts: [] as AchievementToast[],
     burstKey: 0,
     lastAchievementCheckAt: 0,
@@ -210,7 +226,7 @@ export const useGameStore = create<GameState>()((set) => ({
 
   buyGenerator: (id, count) =>
     set((s) => {
-      if (count <= 0) return s
+      if (!Number.isInteger(count) || count <= 0) return s // 정수·양수만(비유한/소수 방어)
       const def = GENERATORS.find((g) => g.id === id)
       if (!def) return s
       const owned = s.generators[id] ?? 0
@@ -246,8 +262,16 @@ export const useGameStore = create<GameState>()((set) => ({
   tick: (now) =>
     set((s) => {
       const elapsedMs = now - s.lastTick
-      if (elapsedMs <= 0) return s // 시계 역행·중복 호출 무시
-      const gained = s.manaPerSecond * (elapsedMs / 1000)
+      // 큰 역행(시계 역행·simulate 미래 앵커): 지급 없이 lastTick만 now로 재앵커해 이후 생산을 되살린다.
+      if (elapsedMs < TICK_REANCHOR_TOLERANCE_MS) return { lastTick: now }
+      if (elapsedMs <= 0) return s // 미세 역행(재앵커 허용 범위 내)·중복 호출은 기존대로 무시
+      // catch-up 캡: 캡 이내분은 100% 지급, 초과분은 오프라인 공식(50%/8h 캡)으로 라우팅한다.
+      // (순수 계산 offlineEarnings는 그대로 쓰고, 100%/오프라인 조합만 여기 액션에서 한다.)
+      const mps = s.manaPerSecond
+      const gained =
+        elapsedMs <= MAX_TICK_CATCHUP_MS
+          ? mps * (elapsedMs / 1000)
+          : mps * (MAX_TICK_CATCHUP_MS / 1000) + offlineEarnings(elapsedMs - MAX_TICK_CATCHUP_MS, mps)
       const partial = {
         mana: s.mana + gained,
         lifetimeMana: s.lifetimeMana + gained, // 생산 획득도 누적 마나에 반영
@@ -305,7 +329,21 @@ export const useGameStore = create<GameState>()((set) => ({
       }),
     ),
 
+  // 60초 미만 부재 조용한 지급(D-1.5): 팝업 없이 마나만 100% 합산 + lastTick=now(이중 지급 금지).
+  applySilentEarnings: (amount, now) =>
+    set((s) =>
+      withAchievements(s, {
+        mana: s.mana + amount,
+        lifetimeMana: s.lifetimeMana + amount,
+        totalLifetimeMana: s.totalLifetimeMana + amount,
+        lastTick: now,
+      }),
+    ),
+
   dismissOffline: () => set({ offlineGain: null }),
+
+  markLoadFailed: () => set({ loadFailed: true }),
+  dismissLoadFailed: () => set({ loadFailed: false }),
 
   // 각성: 이번 생 누적 마나로 스타더스트를 얻고 진행을 초기화한다.
   // 조건 미달(lifetimeMana < 임계 또는 보상 0)이면 아무것도 하지 않는다(UI에서도 막지만 방어).

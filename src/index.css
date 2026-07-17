@@ -17,6 +17,26 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
+  /* 모바일 터치 방어(D-1.6): UI 텍스트는 선택 불가(드래그로 입력·클릭이 새지 않게), 탭 하이라이트 제거. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 입력·복사가 필요한 영역(백업 문자열 등)은 선택 가능하게 되돌린다. */
+textarea,
+input,
+[data-selectable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* 인터랙티브 요소: 더블탭 확대·지연 없이 즉시 반응(touch-action), 탭 하이라이트 제거. */
+button,
+a,
+[role='button'] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #root,
@@ -816,4 +836,93 @@ body {
 
 .title-start:hover {
   filter: brightness(1.1);
+}
+
+/* D-1.1 세이브 로드 실패 배너 — 상단 고정 안내, 닫기 가능. */
+.load-failed-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #4a2b2b;
+  border-bottom: 1px solid #b0324a;
+  color: #ffdede;
+  font-size: 13px;
+}
+
+.load-failed-text {
+  line-height: 1.4;
+}
+
+.load-failed-close {
+  flex-shrink: 0;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 4px 8px;
+  color: #ffdede;
+  background: transparent;
+  border: 1px solid #b0324a;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.load-failed-close:hover {
+  background: #b0324a;
+}
+
+/* D-1.2 에러 바운더리 폴백 — 모달 위에도 확실히 보이도록 최상위 z-index. */
+.error-boundary-backdrop {
+  z-index: 1000;
+}
+
+/* D-1.6 모바일(≤480px) — 헤더 2단 재배치 + 터치 히트 영역 확보. 375px 기준으로 잘림 없이. */
+@media (max-width: 480px) {
+  .header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 10px 14px;
+  }
+
+  /* 1줄: 타이틀(좌) + 설정류 버튼(우, space-between로 밀림). 2줄: 마나·MPS·✨(전체 폭). */
+  .header-title {
+    order: 1;
+    font-size: 18px;
+  }
+
+  .header-actions {
+    order: 2;
+  }
+
+  .header-stats {
+    order: 3;
+    flex-basis: 100%;
+    justify-content: flex-start;
+    gap: 12px;
+  }
+
+  /* 헤더 수치·버튼 텍스트는 줄바꿈 없이 한 줄 유지(잘림 없이). */
+  .header-mana,
+  .header-mps,
+  .header-stardust,
+  .header-button {
+    white-space: nowrap;
+  }
+
+  /* 자주 쓰는 소형 컨트롤 히트 영역 44px 확보(시각 크기는 유지). */
+  .header-button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .buy-amount-option {
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
 }

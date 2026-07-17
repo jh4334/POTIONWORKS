@@ -6,6 +6,7 @@
 // 규칙(CLAUDE.md): 상태 변형은 스토어 액션에서만. 여기선 기존 액션을 조합하기만 하고
 //   새로운 상태 변형 로직을 두지 않는다. addMana만 전용 액션(debugAddMana)을 사용한다.
 import { useGameStore } from '../store/gameStore.ts'
+import { hardResetAndReload } from '../engine/autosave.ts'
 
 interface Cheats {
   // 마나 +n (누적 마나 통계도 함께). 각성 도달 등 상태 진행에 사용.
@@ -33,7 +34,8 @@ const cheats: Cheats = {
     s.tick(s.lastTick + hours * 3600_000)
   },
   reset() {
-    useGameStore.getState().hardReset()
+    // 하드리셋 표준 경로(자동저장 정지 → clearSave → reload). 경합으로 세이브가 되살아나지 않게 한다.
+    hardResetAndReload()
   },
 }
 

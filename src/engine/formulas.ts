@@ -15,27 +15,36 @@ export function generatorCost(baseCost: number, owned: number): number {
 //   Σ_{i=0}^{count-1} baseCost·r^(owned+i) = baseCost·r^owned·(r^count − 1)/(r − 1)
 // (개별 가격을 각각 ceil해 더한 값과는 최대 count-1만큼 차이날 수 있으나,
 //  "raw 합을 한 번 ceil"을 기준으로 삼아 구매·표시·검산을 모두 일관되게 맞춘다.)
+// count===1은 generatorCost로 단락 — 등비합의 부동소수 오차로 표시·구매가 1 어긋나는 경계(~2e15+)를 없앤다.
 export function bulkCost(baseCost: number, owned: number, count: number): number {
   if (count <= 0) return 0
+  if (count === 1) return generatorCost(baseCost, owned)
   const r = COST_GROWTH
   const raw = (baseCost * r ** owned * (r ** count - 1)) / (r - 1)
   return Math.ceil(raw)
 }
+
+// maxAffordable n 상한: 비용이 Number.MAX_VALUE를 넘어서는 지점(log_r(MAX) ≈ 5079).
+// 그 이상은 어차피 bulkCost가 Infinity라 살 수 없으므로, 검산 루프의 무한 반복을 막는 안전 상한이다.
+const MAX_AFFORDABLE_N = Math.floor(Math.log(Number.MAX_VALUE) / Math.log(COST_GROWTH))
 
 // 현재 마나로 살 수 있는 최대 개수. 로그 공식으로 근사한 뒤 검산으로 ±오차 보정.
 //   mana ≥ baseCost·r^owned·(r^n − 1)/(r − 1)  를 n에 대해 풀면
 //   n ≤ log_r( 1 + mana·(r−1)/(baseCost·r^owned) )
 export function maxAffordable(baseCost: number, owned: number, mana: number): number {
   const r = COST_GROWTH
-  // 1개도 못 사면 즉시 0.
-  if (mana < generatorCost(baseCost, owned)) return 0
+  // 비유한 마나(Infinity/NaN)는 0 — 검산 루프 무한 반복(UI 프리즈) 차단.
+  if (!Number.isFinite(mana)) return 0
+  // 1개도 못 사면 즉시 0. bulkCost 기준으로 통일(1개-구매 가드가 실제 구매값과 어긋나지 않게).
+  if (mana < bulkCost(baseCost, owned, 1)) return 0
 
   const ratio = (mana * (r - 1)) / (baseCost * r ** owned) + 1
   let n = Math.floor(Math.log(ratio) / Math.log(r))
   if (n < 0) n = 0
+  if (n > MAX_AFFORDABLE_N) n = MAX_AFFORDABLE_N
 
-  // 검산 보정: ceil로 인한 오차를 실제 bulkCost로 정확히 맞춘다.
-  while (bulkCost(baseCost, owned, n + 1) <= mana) n += 1
+  // 검산 보정: ceil로 인한 오차를 실제 bulkCost로 정확히 맞춘다(상한 안에서만).
+  while (n < MAX_AFFORDABLE_N && bulkCost(baseCost, owned, n + 1) <= mana) n += 1
   while (n > 0 && bulkCost(baseCost, owned, n) > mana) n -= 1
   return n
 }
@@ -82,6 +91,7 @@ export function totalMps(
 // 각성 보상: 이번 생 누적 마나로 얻는 스타더스트 = floor(sqrt(누적 마나 / 임계값)).
 // 임계 미만이면 0(sqrt<1의 floor). 정확히 임계면 1, 4배면 2, 9배면 3 …
 export function stardustFor(lifetimeMana: number): number {
+  if (!Number.isFinite(lifetimeMana)) return 0 // NaN/Infinity 방어(NaN은 아래 비교를 통과해버림)
   if (lifetimeMana < PRESTIGE_THRESHOLD) return 0
   return Math.floor(Math.sqrt(lifetimeMana / PRESTIGE_THRESHOLD))
 }
