@@ -3,7 +3,19 @@
 import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
 import type { AchievementDef } from '../data/achievements.ts'
-import { ACHIEVEMENT_MULT_PER, PRESTIGE_THRESHOLD, STARDUST_MULT_PER } from '../data/config.ts'
+import {
+  ACHIEVEMENT_MULT_PER,
+  PRESTIGE_THRESHOLD,
+  STARDUST_MULT_PER,
+  FIRST_PRESTIGE_BONUS,
+  OFFLINE_EFFICIENCY,
+  OFFLINE_CAP_MS,
+} from '../data/config.ts'
+import {
+  STARDUST_UPGRADES,
+  STARDUST_COST_GROWTH,
+  type StardustUpgradeDef,
+} from '../data/stardustShop.ts'
 
 // ceil 정책: 비용은 항상 정수로 올림한다(표시·구매 동일 값).
 // 단건 구매 가격 = baseCost × 1.15^보유수.
@@ -128,6 +140,22 @@ export function stardustFor(lifetimeMana: number): number {
   return Math.floor(Math.sqrt(lifetimeMana / PRESTIGE_THRESHOLD))
 }
 
+// 각성으로 다음 정수(현재 n → n+1) 스타더스트를 얻는 데 필요한 누적 마나 = (n+1)² × 임계값.
+// stardustFor의 역산 — 각성 패널의 "다음 +1까지 Y" 상시 표시에 쓴다(D-3.2).
+// 비유한/임계 미만이면 n=0 → 1²×임계(첫 스타더스트 도달점)를 돌려준다.
+export function nextStardustAt(lifetimeMana: number): number {
+  const n = stardustFor(lifetimeMana)
+  return (n + 1) * (n + 1) * PRESTIGE_THRESHOLD
+}
+
+// 지금 각성 시 실제로 얻는 스타더스트 = stardustFor + (첫 각성이면 첫 각성 보너스).
+// 미리보기·실행이 같은 값을 쓰도록 순수 함수로 둔다(D-3.2).
+export function prestigeGain(lifetimeMana: number, totalPrestiges: number): number {
+  const base = stardustFor(lifetimeMana)
+  if (base <= 0) return 0
+  return base + (totalPrestiges === 0 ? FIRST_PRESTIGE_BONUS : 0)
+}
+
 // 스타더스트 영구 배율 = 1 + stardust × 개당 증가분. 0개면 1.0(배율 없음).
 export function stardustMultiplier(stardust: number): number {
   return 1 + stardust * STARDUST_MULT_PER
@@ -184,17 +212,83 @@ export function achievementCurrent(def: AchievementDef, stats: AchievementStats)
 }
 
 // 클릭당 획득량 = 기본 클릭력 + MPS × (clickMpsPercent 합 / 100).
-// 업그레이드가 없으면 basePower 그대로.
+// 업그레이드가 없으면 basePower 그대로. extraPercent는 업그레이드 외 clickMps 퍼센트 합
+// (상점 '공명 증폭' 등) — 기존 업그레이드 퍼센트와 동일 경로에 합류시킨다(D-3.1).
 export function clickPower(
   basePower: number,
   mps: number,
   purchasedUpgrades: UpgradeDef[] = [],
+  extraPercent: number = 0,
 ): number {
-  let percent = 0
+  let percent = extraPercent
   for (const u of purchasedUpgrades) {
     if (u.effect.kind === 'clickMpsPercent') percent += u.effect.percent
   }
   return basePower + (mps * percent) / 100
+}
+
+// --- 스타더스트 상점 (D-3.1) ---
+// 상점 레벨은 maxLevel까지만 유효 — 순수 함수가 손상 세이브(초과 레벨)에도 정직하도록 방어 클램프.
+function clampLevel(def: StardustUpgradeDef, level: number): number {
+  const lv = typeof level === 'number' && Number.isFinite(level) && level > 0 ? Math.floor(level) : 0
+  return def.maxLevel === null ? lv : Math.min(lv, def.maxLevel)
+}
+
+// 레벨 N에서 다음(N→N+1) 구매 비용 = baseCost × 2^N (정수). 레벨이 오를수록 두 배씩.
+export function stardustUpgradeCost(def: StardustUpgradeDef, level: number): number {
+  const lv = Number.isFinite(level) && level > 0 ? Math.floor(level) : 0
+  return Math.ceil(def.baseCost * STARDUST_COST_GROWTH ** lv)
+}
+
+// 상점 '공명 증폭' 등 clickMpsPercent 효과의 레벨 합 퍼센트. clickPower의 extraPercent로 넘긴다.
+export function stardustClickPercent(levels: Record<string, number>): number {
+  let percent = 0
+  for (const def of STARDUST_UPGRADES) {
+    if (def.effect.kind === 'clickMpsPercent') {
+      percent += clampLevel(def, levels[def.id] ?? 0) * def.effect.perLevel
+    }
+  }
+  return percent
+}
+
+// 각성 시 보유하고 시작할 견습생 수 = Σ(레벨 × perLevel). 상점 '견습 마법사단' 반영.
+export function startingApprentices(levels: Record<string, number>): number {
+  let total = 0
+  for (const def of STARDUST_UPGRADES) {
+    if (def.effect.kind === 'startingApprentices') {
+      total += clampLevel(def, levels[def.id] ?? 0) * def.effect.perLevel
+    }
+  }
+  return total
+}
+
+// 실효 오프라인 효율 = 기본(config) + Σ(레벨 × perLevel). 상점 '꿈꾸는 솥' 반영.
+// base는 호출부/테스트에서 주입 가능하되 기본은 config 상수(formulas의 config import 패턴).
+export function effectiveOfflineEfficiency(
+  levels: Record<string, number>,
+  base: number = OFFLINE_EFFICIENCY,
+): number {
+  let eff = base
+  for (const def of STARDUST_UPGRADES) {
+    if (def.effect.kind === 'offlineEfficiency') {
+      eff += clampLevel(def, levels[def.id] ?? 0) * def.effect.perLevel
+    }
+  }
+  return eff
+}
+
+// 실효 오프라인 캡(ms) = 기본(config) + Σ(레벨 × perLevelMs). 상점 '시간의 모래' 반영.
+export function effectiveOfflineCapMs(
+  levels: Record<string, number>,
+  base: number = OFFLINE_CAP_MS,
+): number {
+  let cap = base
+  for (const def of STARDUST_UPGRADES) {
+    if (def.effect.kind === 'offlineCap') {
+      cap += clampLevel(def, levels[def.id] ?? 0) * def.effect.perLevelMs
+    }
+  }
+  return cap
 }
 
 // 해금 조건 판정(순수). 시설 보유수 또는 총 MPS 기준.

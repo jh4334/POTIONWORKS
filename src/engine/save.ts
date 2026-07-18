@@ -8,13 +8,15 @@ import { SAVE_KEY, SAVE_CORRUPT_KEY, GENERATOR_MAX, INITIAL_CLICK_POWER } from '
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
 import { KNOWN_ACHIEVEMENT_IDS } from '../data/achievements.ts'
+import { STARDUST_UPGRADES, stardustUpgradeById } from '../data/stardustShop.ts'
 import type { BuyAmount } from '../store/gameStore.ts'
 
 // 세이브 스키마 버전. 필드 구조를 바꾸면 올리고 migrate에 단계 추가.
 // v2(T5.1): 각성 필드(lifetimeMana/stardust/totalPrestiges) 추가.
 // v3(T6.1/T6.2): 업적/통계(achievements/totalClicks/totalLifetimeMana) + 음소거(muted) 추가.
 // v4(D-2.3): 플레이 시간(playtimeMs) 추가 — 통계 패널용 실제 경과 누적(캡 무관).
-export const SAVE_VERSION = 4
+// v5(D-3): 스타더스트 상점 레벨(stardustUpgrades) 추가 — 각성해도 유지되는 영구 강화 트랙.
+export const SAVE_VERSION = 5
 
 // 직렬화 대상(진실만). 파생값은 제외.
 export interface SaveState {
@@ -36,6 +38,8 @@ export interface SaveState {
   muted: boolean
   // 플레이 시간 누적(v4, ms). tick에서 실제 경과를 그대로 누적(오프라인 캡과 무관). 통계 표시용.
   playtimeMs: number
+  // 스타더스트 상점 레벨(v5). id → 레벨. 각성해도 유지(스타더스트 영역).
+  stardustUpgrades: Record<string, number>
 }
 
 export interface SaveData {
@@ -47,6 +51,7 @@ export interface SaveData {
 // 알려진 id 집합(마이그레이션 시 미지의 generator/upgrade id를 걸러낸다).
 const KNOWN_GENERATOR_IDS = new Set(GENERATORS.map((g) => g.id))
 const KNOWN_UPGRADE_IDS = new Set(UPGRADES.map((u) => u.id))
+const KNOWN_STARDUST_IDS = new Set(STARDUST_UPGRADES.map((u) => u.id))
 
 // 스토어 상태(GameState)는 SaveState의 상위 집합이라 그대로 넘길 수 있다.
 // now를 인자로 받아 테스트에서 결정적(deterministic) 라운드트립이 가능하게 한다.
@@ -69,6 +74,7 @@ export function toSaveData(state: SaveState, now: number = Date.now()): SaveData
       totalLifetimeMana: state.totalLifetimeMana,
       muted: state.muted,
       playtimeMs: state.playtimeMs,
+      stardustUpgrades: { ...state.stardustUpgrades },
     },
   }
 }
@@ -131,6 +137,21 @@ function normalizeUpgrades(v: unknown): string[] {
   return [...seen]
 }
 
+// stardustUpgrades 정규화: 알려진 상점 id만, 유한·1 이상·정수(내림)·maxLevel 클램프.
+// 미지 id·손상값(0/음수/NaN)은 버린다 — 오염된 레벨이 파생 계산으로 전파되는 것을 막는다(D-3).
+function normalizeStardustUpgrades(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!isRecord(v)) return out
+  for (const [id, level] of Object.entries(v)) {
+    const def = stardustUpgradeById(id)
+    if (!def || !KNOWN_STARDUST_IDS.has(id)) continue
+    if (typeof level !== 'number' || !Number.isFinite(level) || level < 1) continue
+    const clamped = def.maxLevel === null ? Math.floor(level) : Math.min(Math.floor(level), def.maxLevel)
+    if (clamped >= 1) out[id] = clamped
+  }
+  return out
+}
+
 // achievements 정규화: 알려진 업적 id 문자열만, 중복 제거.
 function normalizeAchievements(v: unknown): string[] {
   if (!Array.isArray(v)) return []
@@ -148,6 +169,7 @@ function normalizeAchievements(v: unknown): string[] {
 // v2→v3: 업적/통계 필드가 없으므로 achievements=[], totalClicks=0,
 //   totalLifetimeMana=lifetimeMana(이번 생 누적을 총 누적의 출발값으로), muted=false.
 // v3→v4: playtimeMs가 없으므로 0으로 초기화한다.
+// v4→v5: stardustUpgrades가 없으므로 빈 객체({})로 초기화한다.
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
     console.warn('[save] 세이브가 객체가 아닙니다 — 무시합니다.')
@@ -197,6 +219,10 @@ export function migrate(raw: unknown): SaveData | null {
   const isV4Plus = raw.version >= 4
   const playtimeMs = isV4Plus ? normalizeNonNeg(s.playtimeMs, 0) : 0
 
+  // v4 이하엔 stardustUpgrades가 없다 → 빈 객체. v5 이상은 정규화해 채택(미지 id·손상값 제거).
+  const isV5Plus = raw.version >= 5
+  const stardustUpgrades = isV5Plus ? normalizeStardustUpgrades(s.stardustUpgrades) : {}
+
   return {
     version: SAVE_VERSION,
     savedAt: raw.savedAt,
@@ -215,6 +241,7 @@ export function migrate(raw: unknown): SaveData | null {
       totalLifetimeMana,
       muted,
       playtimeMs,
+      stardustUpgrades,
     },
   }
 }
@@ -239,6 +266,9 @@ function hasFiniteNumbers(state: SaveState): boolean {
   }
   for (const count of Object.values(state.generators)) {
     if (typeof count !== 'number' || !Number.isFinite(count)) return false
+  }
+  for (const level of Object.values(state.stardustUpgrades)) {
+    if (typeof level !== 'number' || !Number.isFinite(level)) return false
   }
   return true
 }

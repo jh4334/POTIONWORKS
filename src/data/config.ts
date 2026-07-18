@@ -45,6 +45,9 @@ export const PRESTIGE_THRESHOLD = 1e9
 export const PRESTIGE_HINT_THRESHOLD = 1e6
 // 스타더스트 1개당 전체 생산 배율 증가분(+10% → 0.1). 배율 = 1 + stardust × 이 값.
 export const STARDUST_MULT_PER = 0.1
+// 첫 각성(totalPrestiges===0) 한정 추가 스타더스트(D-3.2 첫 각성 체감 보정).
+// 첫 각성이 "같은 인생 재방송"으로 느껴지지 않도록 최소 체감을 보장한다(U7).
+export const FIRST_PRESTIGE_BONUS = 2
 
 // --- 업적 (T6.1, DESIGN.md §2.7) ---
 // 업적 1개당 전체 생산 배율 증가분(+1% → 0.01). 배율 = 1 + 달성수 × 이 값.

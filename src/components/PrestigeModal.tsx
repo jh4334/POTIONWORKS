@@ -1,17 +1,25 @@
 import { useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
-import { stardustFor } from '../engine/formulas.ts'
-import { PRESTIGE_THRESHOLD, PRESTIGE_HINT_THRESHOLD, STARDUST_MULT_PER } from '../data/config.ts'
+import { nextStardustAt, prestigeGain } from '../engine/formulas.ts'
+import {
+  PRESTIGE_THRESHOLD,
+  PRESTIGE_HINT_THRESHOLD,
+  STARDUST_MULT_PER,
+  FIRST_PRESTIGE_BONUS,
+} from '../data/config.ts'
 import { formatNumber } from '../utils/format.ts'
 import { saveNow } from '../engine/autosave.ts'
 import Modal from './Modal.tsx'
+import StardustShopModal from './StardustShopModal.tsx'
 
-// T5.1 각성(프레스티지). 좌측 클릭 패널 하단에 배치.
+// T5.1 각성(프레스티지) + D-3 리워크. 좌측 클릭 패널 하단에 배치.
 // - 누적 마나가 힌트 임계(1e6) 미만이면 게이지 자체를 숨긴다(D-2.7 온보딩 — 조기 노출 혼란 방지).
-// - 힌트 임계~각성 임계 사이면 진행 게이지 + 툴팁.
-// - 각성 가능하면 버튼 → 확인 모달(Modal) → 실행. 실행 직후 즉시 저장(새로고침 되돌리기 방지).
+// - 힌트 임계~각성 임계 사이면 진행 게이지 + 툴팁 + "다음 ✨+1까지" 목표.
+// - 각성 가능하면 버튼 → 확인 모달(Modal, 전후 합계) → 실행. 실행 직후 즉시 저장.
+// - 임계 도달 후에도 "누적 X · 다음 ✨+1까지 Y" 줄을 유지한다(U7).
+// - 스타더스트 상점 진입 + 각성 사전 설명(ⓘ) 제공.
 // lifetimeMana 원시값은 매 tick(100ms) 소수점 단위로 변하므로 직접 구독하지 않는다.
-// 대신 파생값만 구독한다: 진행도 문자열 / 정수 퍼센트 / 임계 도달 불리언 / 미리보기 정수.
+// 대신 파생 문자열·정수만 구독한다(리렌더 규율).
 
 // 스타더스트 N개가 주는 생산 보너스 퍼센트(+N0%). 수치는 config(STARDUST_MULT_PER)에서.
 function bonusPercent(stardust: number): number {
@@ -30,13 +38,26 @@ export default function PrestigeModal() {
   const showHint = useGameStore((s) => s.lifetimeMana >= PRESTIGE_HINT_THRESHOLD)
   // 임계 도달 불리언: 임계 전후로만 값이 바뀜.
   const reachedThreshold = useGameStore((s) => s.lifetimeMana >= PRESTIGE_THRESHOLD)
-  // 미리보기 N = 지금 각성 시 얻는 스타더스트(정수). 임계 전 0, 이후 드물게 변함.
-  const gain = useGameStore((s) => stardustFor(s.lifetimeMana))
+  // 미리보기 N = 지금 각성 시 얻는 스타더스트(첫 각성 보너스 포함, 정수). 드물게 변함.
+  const gain = useGameStore((s) => prestigeGain(s.lifetimeMana, s.totalPrestiges))
+  // 다음 정수 스타더스트를 얻는 데 필요한 누적 마나(문자열). 정수 경계에서만 바뀐다.
+  const nextAtText = useGameStore((s) => formatNumber(nextStardustAt(s.lifetimeMana)))
+  // 현재 보유 스타더스트 + 각성 횟수: 확인 모달 전후 합계·상점 진입 조건·첫 각성 보너스 표기.
+  const stardust = useGameStore((s) => s.stardust)
+  const totalPrestiges = useGameStore((s) => s.totalPrestiges)
   const prestige = useGameStore((s) => s.prestige)
+
   const [showConfirm, setShowConfirm] = useState(false)
+  const [showShop, setShowShop] = useState(false)
+  const [showInfo, setShowInfo] = useState(false)
 
   // N=0이면 버튼 비활성(모달까지 안 감).
   const canPrestige = reachedThreshold && gain > 0
+  // 상점 진입: 스타더스트 보유>0 또는 각성 1회 이상일 때 노출.
+  const showShopEntry = stardust > 0 || totalPrestiges > 0
+  // 첫 각성이면 확인 모달에 보너스 포함 문구를 덧붙인다.
+  const isFirstPrestige = totalPrestiges === 0
+  const after = stardust + gain
 
   const handlePrestige = () => {
     prestige()
@@ -44,24 +65,55 @@ export default function PrestigeModal() {
     setShowConfirm(false)
   }
 
-  // 힌트 임계 미만이면 각성 UI를 아예 숨긴다(초반 화면 정리).
-  if (!canPrestige && !showHint) return null
+  // 힌트 임계 미만이면 각성 UI를 아예 숨긴다(초반 화면 정리). 단 상점은 이미 각성해 본 유저면 노출.
+  if (!canPrestige && !showHint && !showShopEntry) return null
 
   return (
     <div className="prestige-panel">
       {canPrestige ? (
-        <button type="button" className="prestige-button" onClick={() => setShowConfirm(true)}>
-          ✨ 각성 (+{formatNumber(gain)} 스타더스트)
-        </button>
-      ) : (
-        <div className="prestige-progress" title={HINT_TOOLTIP}>
-          <span className="prestige-progress-label">각성까지 누적 마나</span>
-          <div className="prestige-progress-bar">
-            <div className="prestige-progress-fill" style={{ width: `${pct}%` }} />
+        <>
+          <button type="button" className="prestige-button" onClick={() => setShowConfirm(true)}>
+            ✨ 각성 (+{formatNumber(gain)} 스타더스트)
+          </button>
+          <div className="prestige-next">
+            누적 {progressText} · 다음 ✨+1까지 {nextAtText}
           </div>
-          <span className="prestige-progress-value">
-            {progressText} / {formatNumber(PRESTIGE_THRESHOLD)}
-          </span>
+        </>
+      ) : (
+        showHint && (
+          <div className="prestige-progress" title={HINT_TOOLTIP}>
+            <span className="prestige-progress-label">각성까지 누적 마나</span>
+            <div className="prestige-progress-bar">
+              <div className="prestige-progress-fill" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="prestige-progress-value">
+              {progressText} / {formatNumber(PRESTIGE_THRESHOLD)}
+            </span>
+            <span className="prestige-next">다음 ✨+1까지 {nextAtText}</span>
+          </div>
+        )
+      )}
+
+      <div className="prestige-tools">
+        {showShopEntry && (
+          <button type="button" className="prestige-shop-button" onClick={() => setShowShop(true)}>
+            ✨ 상점
+          </button>
+        )}
+        <button
+          type="button"
+          className="prestige-info"
+          aria-label="각성이란?"
+          aria-expanded={showInfo}
+          onClick={() => setShowInfo((v) => !v)}
+        >
+          ⓘ
+        </button>
+      </div>
+      {showInfo && (
+        <div className="prestige-info-pop" role="note">
+          <p>각성하면 마나·시설·업그레이드가 초기화되지만, 이번 생 누적 마나에 비례한 스타더스트를 영구히 얻어요.</p>
+          <p>스타더스트는 전체 생산을 +{bonusPercent(1)}%씩 올리고, 상점에서 시작 부스트·오프라인 강화에도 쓸 수 있어요.</p>
         </div>
       )}
 
@@ -69,11 +121,15 @@ export default function PrestigeModal() {
         <Modal title="각성하시겠어요? ✨" onClose={() => setShowConfirm(false)}>
           <p className="modal-body">
             지금 각성하면{' '}
-            <strong className="offline-amount">✨+{formatNumber(gain)} 스타더스트</strong> (생산 +
-            {bonusPercent(gain)}%)
+            <strong className="offline-amount">✨+{formatNumber(gain)} 스타더스트</strong>
+            {isFirstPrestige && ` (첫 각성 보너스 +${FIRST_PRESTIGE_BONUS} 포함)`}
+          </p>
+          <p className="modal-body">
+            ✨ {formatNumber(stardust)} → {formatNumber(after)} (생산 +{bonusPercent(stardust)}% → +
+            {bonusPercent(after)}%)
           </p>
           <p className="modal-sub">
-            각성 후: 마나 · 시설 · 업그레이드 초기화 / 스타더스트 · 통계 유지
+            각성 후: 마나 · 시설 · 업그레이드 초기화 / 스타더스트 · 상점 · 통계 유지
           </p>
           <div className="modal-actions">
             <button type="button" className="modal-button" onClick={() => setShowConfirm(false)}>
@@ -89,6 +145,8 @@ export default function PrestigeModal() {
           </div>
         </Modal>
       )}
+
+      {showShop && <StardustShopModal onClose={() => setShowShop(false)} />}
     </div>
   )
 }

@@ -14,11 +14,29 @@ import {
   achievementMultiplier,
   effectiveGeneratorMps,
   mpsDelta,
+  stardustUpgradeCost,
+  stardustClickPercent,
+  startingApprentices,
+  effectiveOfflineEfficiency,
+  effectiveOfflineCapMs,
+  nextStardustAt,
+  prestigeGain,
   type AchievementStats,
 } from './formulas.ts'
 import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
 import type { AchievementDef } from '../data/achievements.ts'
+import { STARDUST_UPGRADES } from '../data/stardustShop.ts'
+import {
+  OFFLINE_EFFICIENCY,
+  OFFLINE_CAP_MS,
+  PRESTIGE_THRESHOLD,
+  FIRST_PRESTIGE_BONUS,
+} from '../data/config.ts'
+
+// 상점 정의 참조(id로 찾아 데이터 상수에 결합된 테스트가 데이터 변경에 함께 검증되게 한다).
+const DEF = (id: string) => STARDUST_UPGRADES.find((u) => u.id === id)!
+const HOUR_MS = 60 * 60 * 1000
 
 // 테스트용 업그레이드 정의(수식만 검증하므로 name/desc/cost/unlock은 의미값만 채운다).
 function mult2(generatorId: string): UpgradeDef {
@@ -319,6 +337,100 @@ describe('achievementMultiplier', () => {
     const base = 10 // a 10개 × 1
     const globalMult = stardustMultiplier(5) * achievementMultiplier(10) // 1.5 × 1.1 = 1.65
     expect(totalMps({ a: 10 }, gens, [], globalMult)).toBeCloseTo(base * 1.65)
+  })
+})
+
+describe('stardustUpgradeCost', () => {
+  it('비용 = baseCost × 2^level (정수)', () => {
+    const apprentices = DEF('starting-apprentices') // baseCost 1
+    expect(stardustUpgradeCost(apprentices, 0)).toBe(1)
+    expect(stardustUpgradeCost(apprentices, 1)).toBe(2)
+    expect(stardustUpgradeCost(apprentices, 3)).toBe(8)
+    const resonance = DEF('click-resonance') // baseCost 2
+    expect(stardustUpgradeCost(resonance, 0)).toBe(2)
+    expect(stardustUpgradeCost(resonance, 2)).toBe(8)
+    const sands = DEF('sands-of-time') // baseCost 5
+    expect(stardustUpgradeCost(sands, 0)).toBe(5)
+    expect(stardustUpgradeCost(sands, 3)).toBe(40)
+  })
+
+  it('레벨이 음수/비유한이면 0레벨 취급', () => {
+    const apprentices = DEF('starting-apprentices')
+    expect(stardustUpgradeCost(apprentices, -1)).toBe(1)
+    expect(stardustUpgradeCost(apprentices, NaN)).toBe(1)
+  })
+})
+
+describe('stardustClickPercent', () => {
+  it('공명 증폭 레벨 × 1%p 합산', () => {
+    expect(stardustClickPercent({})).toBe(0)
+    expect(stardustClickPercent({ 'click-resonance': 3 })).toBe(3)
+  })
+  it('clickPower의 extraPercent로 합류 — 업그레이드 퍼센트와 합산', () => {
+    // base 1 + mps 1000 × (업글 1% + 상점 3%)/100 = 1 + 40 = 41
+    const pct = stardustClickPercent({ 'click-resonance': 3 })
+    expect(clickPower(1, 1000, [clickPercent(1)], pct)).toBeCloseTo(41)
+  })
+})
+
+describe('startingApprentices', () => {
+  it('견습 마법사단 레벨 × 5', () => {
+    expect(startingApprentices({})).toBe(0)
+    expect(startingApprentices({ 'starting-apprentices': 4 })).toBe(20)
+  })
+})
+
+describe('effectiveOfflineEfficiency', () => {
+  it('기본 50% + 꿈꾸는 솥 레벨 × 5%p', () => {
+    expect(effectiveOfflineEfficiency({})).toBeCloseTo(OFFLINE_EFFICIENCY)
+    expect(effectiveOfflineEfficiency({ 'dreaming-cauldron': 3 })).toBeCloseTo(0.65)
+    // maxLevel 5 → 최대 75%.
+    expect(effectiveOfflineEfficiency({ 'dreaming-cauldron': 5 })).toBeCloseTo(0.75)
+  })
+  it('maxLevel 초과 레벨(손상)은 클램프', () => {
+    expect(effectiveOfflineEfficiency({ 'dreaming-cauldron': 99 })).toBeCloseTo(0.75)
+  })
+})
+
+describe('effectiveOfflineCapMs', () => {
+  it('기본 8h + 시간의 모래 레벨 × 1h', () => {
+    expect(effectiveOfflineCapMs({})).toBe(OFFLINE_CAP_MS)
+    expect(effectiveOfflineCapMs({ 'sands-of-time': 2 })).toBe(OFFLINE_CAP_MS + 2 * HOUR_MS)
+    // maxLevel 4 → 최대 12h.
+    expect(effectiveOfflineCapMs({ 'sands-of-time': 4 })).toBe(OFFLINE_CAP_MS + 4 * HOUR_MS)
+  })
+  it('maxLevel 초과 레벨(손상)은 클램프', () => {
+    expect(effectiveOfflineCapMs({ 'sands-of-time': 99 })).toBe(OFFLINE_CAP_MS + 4 * HOUR_MS)
+  })
+})
+
+describe('nextStardustAt', () => {
+  it('다음 정수 n+1 도달 누적 마나 = (n+1)² × 임계', () => {
+    // n=0 → 1²×1e9, n=1 → 2²×1e9, n=2 → 3²×1e9
+    expect(nextStardustAt(0)).toBe(PRESTIGE_THRESHOLD)
+    expect(nextStardustAt(1e9)).toBe(4 * PRESTIGE_THRESHOLD)
+    expect(nextStardustAt(4e9)).toBe(9 * PRESTIGE_THRESHOLD)
+    // 경계 사이(n 유지)에서도 다음 목표는 동일.
+    expect(nextStardustAt(2e9)).toBe(4 * PRESTIGE_THRESHOLD) // n=1 → 4e9
+  })
+  it('비유한 입력은 n=0 취급 → 임계값', () => {
+    expect(nextStardustAt(NaN)).toBe(PRESTIGE_THRESHOLD)
+    expect(nextStardustAt(Infinity)).toBe(PRESTIGE_THRESHOLD)
+  })
+})
+
+describe('prestigeGain', () => {
+  it('첫 각성(totalPrestiges=0)은 첫 각성 보너스 포함', () => {
+    expect(prestigeGain(1e9, 0)).toBe(1 + FIRST_PRESTIGE_BONUS) // 1 + 2 = 3
+    expect(prestigeGain(4e9, 0)).toBe(2 + FIRST_PRESTIGE_BONUS) // 2 + 2 = 4
+  })
+  it('두 번째 각성 이후는 보너스 없음', () => {
+    expect(prestigeGain(1e9, 1)).toBe(1)
+    expect(prestigeGain(9e9, 3)).toBe(3)
+  })
+  it('임계 미만이면 0(보너스도 없음)', () => {
+    expect(prestigeGain(5e8, 0)).toBe(0)
+    expect(prestigeGain(0, 0)).toBe(0)
   })
 })
 

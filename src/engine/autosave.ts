@@ -3,7 +3,8 @@
 import { useGameStore } from '../store/gameStore.ts'
 import { saveToLocal, loadFromLocalResult } from './save.ts'
 import { offlineEarnings } from './offline.ts'
-import { AUTOSAVE_INTERVAL_MS, OFFLINE_MIN_MS, OFFLINE_CAP_MS } from '../data/config.ts'
+import { effectiveOfflineEfficiency, effectiveOfflineCapMs } from './formulas.ts'
+import { AUTOSAVE_INTERVAL_MS, OFFLINE_MIN_MS } from '../data/config.ts'
 
 // 앱 시작 시 세이브가 있었는지(=재방문인지) 기록. 타이틀 오버레이는 최초 방문에서만 띄운다(T8.2).
 // loadGame이 렌더 전에 1회 실행되므로, App 최초 마운트 시점에 이 값이 확정돼 있다.
@@ -58,13 +59,17 @@ export function loadGame(): void {
   // 오프라인 경과의 진실은 타임스탬프: now - savedAt (lastTick이 아니라 저장 시각 기준).
   const now = Date.now()
   const elapsedMs = now - save.savedAt
-  const mps = useGameStore.getState().manaPerSecond // loadSave에서 재계산된 값
+  const store = useGameStore.getState()
+  const mps = store.manaPerSecond // loadSave에서 재계산된 값
+  // 오프라인 효율·캡은 스타더스트 상점 강화(꿈꾸는 솥·시간의 모래)를 반영한 실효값을 쓴다(D-3.1).
+  const efficiency = effectiveOfflineEfficiency(store.stardustUpgrades)
+  const capMs = effectiveOfflineCapMs(store.stardustUpgrades)
 
   if (elapsedMs >= OFFLINE_MIN_MS) {
-    // 60초 이상 부재: 오프라인 정책(50%/8h) 적용 + 팝업.
-    // cappedMs=실제 정산에 인정된 시간(min(경과, 캡)) — 팝업에서 캡 적용 여부를 정확히 표기한다(D-2.6).
-    const amount = offlineEarnings(elapsedMs, mps)
-    const cappedMs = Math.min(elapsedMs, OFFLINE_CAP_MS)
+    // 60초 이상 부재: 오프라인 정책(효율/캡) 적용 + 팝업.
+    // cappedMs=실제 정산에 인정된 시간(min(경과, 실효 캡)) — 팝업에서 캡 적용 여부를 정확히 표기한다(D-2.6).
+    const amount = offlineEarnings(elapsedMs, mps, efficiency, capMs)
+    const cappedMs = Math.min(elapsedMs, capMs)
     if (amount > 0) useGameStore.getState().applyOfflineEarnings(amount, now, elapsedMs, cappedMs)
   } else if (elapsedMs > 0 && mps > 0) {
     // 60초 미만 부재(D-1.5): 팝업 없이 100%를 조용히 지급. lastTick=now로 이중 지급 없음.

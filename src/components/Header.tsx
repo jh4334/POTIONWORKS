@@ -8,6 +8,7 @@ import SaveModal from './SaveModal.tsx'
 import AchievementsModal from './AchievementsModal.tsx'
 import SettingsModal from './SettingsModal.tsx'
 import StatsModal from './StatsModal.tsx'
+import StardustShopModal from './StardustShopModal.tsx'
 
 // 마지막 저장 시각 표시용 포맷(HH:MM:SS).
 function formatClock(ms: number): string {
@@ -37,6 +38,7 @@ export default function Header() {
   const [showAchievements, setShowAchievements] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showStats, setShowStats] = useState(false)
+  const [showShop, setShowShop] = useState(false)
 
   return (
     <header className="header">
@@ -46,9 +48,14 @@ export default function Header() {
         <span className="header-mana">{manaText} 마나</span>
         <span className="header-mps">초당 {mpsText}</span>
         {showStardust && (
-          <span className="header-stardust" title={`전체 생산 +${bonusPercent}%`}>
+          <button
+            type="button"
+            className="header-stardust"
+            title={`전체 생산 +${bonusPercent}% · 클릭하면 스타더스트 상점`}
+            onClick={() => setShowShop(true)}
+          >
             ✨ {formatNumber(stardust)}
-          </span>
+          </button>
         )}
       </div>
       <div className="header-actions">
@@ -88,6 +95,7 @@ export default function Header() {
       {showBackup && <SaveModal onClose={() => setShowBackup(false)} />}
       {showAchievements && <AchievementsModal onClose={() => setShowAchievements(false)} />}
       {showStats && <StatsModal onClose={() => setShowStats(false)} />}
+      {showShop && <StardustShopModal onClose={() => setShowShop(false)} />}
       {showSettings && (
         <SettingsModal
           onClose={() => setShowSettings(false)}

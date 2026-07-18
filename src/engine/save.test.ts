@@ -14,6 +14,7 @@ import {
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
+import { STARDUST_UPGRADES } from '../data/stardustShop.ts'
 import {
   SAVE_KEY,
   SAVE_CORRUPT_KEY,
@@ -24,6 +25,7 @@ import {
 const KNOWN_GEN = GENERATORS[0].id // 'apprentice'
 const KNOWN_UP = UPGRADES[0].id // 'apprentice-x2-10'
 const KNOWN_ACH = ACHIEVEMENTS[0].id // 'clicks-100'
+const KNOWN_STARDUST = STARDUST_UPGRADES[0].id // 'starting-apprentices'
 
 // 클린 픽스처(알려진 id만, 중복 없음) — 라운드트립이 정확히 일치하도록.
 function makeState(): SaveState {
@@ -45,6 +47,7 @@ function makeState(): SaveState {
     totalLifetimeMana: 98765.4,
     muted: true,
     playtimeMs: 123_456,
+    stardustUpgrades: { [KNOWN_STARDUST]: 3 },
   }
 }
 
@@ -260,6 +263,54 @@ describe('migrate', () => {
     expect(out).not.toBeNull()
     expect(out!.version).toBe(SAVE_VERSION) // 4로 승격
     expect(out!.state.playtimeMs).toBe(0)
+  })
+
+  it('v4→v5: stardustUpgrades 필드가 없으면 빈 객체로 초기화', () => {
+    const v4 = {
+      version: 4,
+      savedAt: FIXED_NOW,
+      state: {
+        mana: 100,
+        basePower: 1,
+        lastTick: 5,
+        buyAmount: 1,
+        generators: {},
+        upgrades: [],
+        lifetimeMana: 777,
+        stardust: 2,
+        totalPrestiges: 1,
+        achievements: [],
+        totalClicks: 10,
+        totalLifetimeMana: 777,
+        muted: false,
+        playtimeMs: 123,
+      },
+    }
+    const out = migrate(v4)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 5로 승격
+    expect(out!.state.stardustUpgrades).toEqual({})
+  })
+
+  it('v5 세이브는 stardustUpgrades를 채택(미지 id 제거·손상값 제거·maxLevel 클램프)', () => {
+    // dreaming-cauldron maxLevel 5 → 99는 5로 클램프. starting-apprentices는 소수 내림.
+    const out = migrate({
+      version: 5,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        stardustUpgrades: {
+          [KNOWN_STARDUST]: 3.9,
+          'dreaming-cauldron': 99,
+          'no-such-upgrade': 5,
+          'click-resonance': 0, // 레벨 0/음수는 버린다
+        },
+      },
+    })
+    expect(out!.state.stardustUpgrades[KNOWN_STARDUST]).toBe(3) // 소수 내림
+    expect(out!.state.stardustUpgrades['dreaming-cauldron']).toBe(5) // maxLevel 클램프
+    expect(out!.state.stardustUpgrades['no-such-upgrade']).toBeUndefined() // 미지 제거
+    expect(out!.state.stardustUpgrades['click-resonance']).toBeUndefined() // 레벨 0 제거
   })
 
   it('v4 세이브는 playtimeMs를 그대로 채택(손상·음수·NaN은 0)', () => {
