@@ -67,7 +67,12 @@ function BuffBadges() {
   )
 }
 
-export default function Header() {
+// onExitToTitle: 설정 모달의 "슬롯 변경"이 현재 진행을 저장한 뒤 타이틀로 돌아가기 위해 App에서 내려받는다.
+interface Props {
+  onExitToTitle: () => void
+}
+
+export default function Header({ onExitToTitle }: Props) {
   // 마나 표시는 HeaderMana 서브컴포넌트가 담당한다(감소 틴트를 위해 숫자 구독 — 헤더 전체 리렌더 회피).
   // mps는 구매·버프 시에만 변하지만 일관성을 위해 표시 문자열을 구독한다(버프 중엔 ×N 값이 반영됨).
   const mpsText = useGameStore((s) => formatNumber(s.manaPerSecond))
@@ -152,6 +157,10 @@ export default function Header() {
           onOpenBackup={() => {
             setShowSettings(false)
             setShowBackup(true)
+          }}
+          onChangeSlot={() => {
+            setShowSettings(false)
+            onExitToTitle()
           }}
         />
       )}

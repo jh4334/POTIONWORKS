@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="POTIONWORKS">
+  <!-- E-3.1 PWA 아이콘. png 변환 불가 환경이라 svg 1장을 any/maskable로 등록(vite.config).
+       배경은 테마색(#1a1425). maskable 안전영역을 고려해 솥을 중앙 60% 안에 둔다. -->
+  <rect width="512" height="512" rx="96" fill="#1a1425"/>
+  <!-- 마법 오라 -->
+  <circle cx="256" cy="292" r="150" fill="#2b1d45"/>
+  <!-- 솥 본체 -->
+  <path d="M136 268 h240 a12 12 0 0 1 12 12 v18 a132 132 0 0 1 -264 0 v-18 a12 12 0 0 1 12 -12 Z" fill="#3d2f57"/>
+  <!-- 솥 다리 -->
+  <rect x="168" y="404" width="24" height="34" rx="8" fill="#3d2f57"/>
+  <rect x="320" y="404" width="24" height="34" rx="8" fill="#3d2f57"/>
+  <!-- 포션 액체 -->
+  <ellipse cx="256" cy="276" rx="118" ry="26" fill="#a970ff"/>
+  <ellipse cx="256" cy="272" rx="118" ry="22" fill="#c79bff"/>
+  <!-- 보글보글 기포 -->
+  <circle cx="214" cy="266" r="12" fill="#ece5f8"/>
+  <circle cx="262" cy="270" r="9" fill="#ece5f8"/>
+  <circle cx="300" cy="264" r="7" fill="#ece5f8"/>
+  <!-- 피어오르는 반짝임 -->
+  <path d="M256 176 l10 26 26 10 -26 10 -10 26 -10 -26 -26 -10 26 -10 Z" fill="#ffd76a"/>
+  <circle cx="312" cy="212" r="8" fill="#ffd76a"/>
+  <circle cx="196" cy="224" r="6" fill="#ffd76a"/>
+</svg>

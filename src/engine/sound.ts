@@ -1,15 +1,17 @@
 // T6.2 사운드 — Web Audio API 오실레이터로 아주 짧은 신스음 2종을 생성한다(외부 파일 없음).
-// 규칙: 상태(muted)는 스토어의 진실이고, 여기선 그 값을 setMuted로 받아 재생 여부만 판단한다.
+// 규칙: 볼륨(volume 0~1)은 스토어의 진실이고, 여기선 그 값을 setVolume으로 받아 게인에 반영한다(E-3.3).
+//   volume===0이면 재생 자체를 건너뛴다(음소거). App이 스토어 volume을 이 모듈에 동기화한다.
 //
 // AudioContext 정책: 첫 사용자 상호작용 전에는 suspended일 수 있다. play* 함수는 모두
 // 사용자 제스처(클릭/구매) 흐름에서 호출되므로, 재생 직전 resume()으로 깨운다.
+import { DEFAULT_VOLUME } from '../data/config.ts'
 
 let ctx: AudioContext | null = null
-let muted = false
+let volume = DEFAULT_VOLUME
 
 // AudioContext는 지연 생성(첫 재생 시). SSR/미지원 환경에서도 모듈 로드가 깨지지 않게 방어.
 function getContext(): AudioContext | null {
-  if (muted) return null
+  if (volume <= 0) return null
   // 닫힌 컨텍스트(탭 정책·모바일 백그라운드로 close된 경우)는 재생성을 유도한다.
   if (ctx && ctx.state === 'closed') ctx = null
   if (ctx) return ctx
@@ -39,8 +41,10 @@ function tone(freq: number, durationMs: number, peak: number, type: OscillatorTy
     osc.type = type
     osc.frequency.setValueAtTime(freq, now)
     // 빠른 어택 + 지수 감쇠(0으로 가면 exponentialRamp가 죽으므로 아주 작은 값으로).
+    // 볼륨(0~1)을 피크 게인에 곱한다. 0으로 가면 exponentialRamp가 죽으므로 최소값을 보장한다.
+    const peakGain = Math.max(0.0002, peak * volume)
     gain.gain.setValueAtTime(0.0001, now)
-    gain.gain.exponentialRampToValueAtTime(peak, now + 0.005)
+    gain.gain.exponentialRampToValueAtTime(peakGain, now + 0.005)
     gain.gain.exponentialRampToValueAtTime(0.0001, now + dur)
     osc.connect(gain).connect(audio.destination)
     osc.start(now)
@@ -60,7 +64,7 @@ export function playDing(): void {
   tone(880, 160, 0.12, 'triangle')
 }
 
-// 스토어의 muted를 반영. 음소거면 재생 자체를 건너뛴다.
-export function setMuted(next: boolean): void {
-  muted = next
+// 스토어의 volume(0~1)을 반영. 0이면 재생 자체를 건너뛴다(음소거). 범위를 벗어난 입력은 클램프.
+export function setVolume(next: number): void {
+  volume = Number.isFinite(next) ? Math.min(1, Math.max(0, next)) : DEFAULT_VOLUME
 }

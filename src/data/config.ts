@@ -25,6 +25,20 @@ export const SAVE_DEBOUNCE_MS = 1_000
 // 정상 플레이로는 도달 불가능한 큰 값(1e12).
 export const GENERATOR_MAX = 1e12
 
+// --- 세이브 슬롯 (E-3.2) ---
+// 슬롯 개수(3개). 슬롯 키는 `${SLOT_KEY_PREFIX}${n}`(n=1..COUNT).
+export const SAVE_SLOT_COUNT = 3
+// 슬롯별 localStorage 키 접두사. 기존 단일 키(SAVE_KEY)는 최초 1회 슬롯 1로 이전된다(무손실).
+export const SLOT_KEY_PREFIX = 'potionworks-save-slot'
+// 활성 슬롯 번호 저장 키. 없으면 1번이 활성(기본).
+export const ACTIVE_SLOT_KEY = 'potionworks-active-slot'
+
+// --- 설정 확장 (E-3.3) ---
+// 볼륨 기본값(0~1). muted가 없던 세이브(v9 이하)에서 muted=false → 이 값, muted=true → 0으로 이전.
+export const DEFAULT_VOLUME = 0.7
+// 글자 크기(UI 배율) 선택지. html zoom으로 적용해 px 기반 스타일도 함께 확대된다(접근성).
+export const FONT_SCALE_OPTIONS = [1, 1.15, 1.3] as const
+
 // --- 오프라인 수익 (T4.3, DESIGN.md §2.6) ---
 // 오프라인 인정 시간 상한(ms). 아무리 오래 비워도 이 시간까지만 지급한다(8시간).
 export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000

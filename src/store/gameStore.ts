@@ -11,6 +11,7 @@ import {
   CLICK_BUFF_DURATION_MS,
   DRAGON_GRANT_SECONDS,
   CLICK_COMBO_WINDOW_MS,
+  DEFAULT_VOLUME,
 } from '../data/config.ts'
 import { offlineEarnings } from '../engine/offline.ts'
 import { GENERATORS } from '../data/generators.ts'
@@ -54,6 +55,11 @@ import { clearSave, getDeviceId, type SaveData } from '../engine/save.ts'
 
 // 구매 수량 토글 — 모든 시설 행이 공유하므로 UI 상태지만 스토어에 둔다.
 export type BuyAmount = 1 | 10 | 'max'
+
+// 숫자 표기 방식(E-3.3). 'suffix'=1.23M(기본), 'comma'=1,230,000(1e15 이상은 suffix 하이브리드).
+export type NumberNotation = 'suffix' | 'comma'
+// 이펙트 강도(E-3.3). 'reduced'면 prefers-reduced-motion과 동일 처리(html data-effects → CSS).
+export type EffectsMode = 'full' | 'reduced'
 
 // 오프라인 수익 팝업용 UI 상태(T4.3). 세이브에는 포함하지 않는다 — 로드 시 계산되는 표시값.
 export interface OfflineGain {
@@ -130,8 +136,16 @@ export interface GameState {
   totalClicks: number
   // 전생 포함 총 누적 마나(통계). lifetimeMana처럼 증가하되 각성해도 리셋 안 됨. 업적 조건.
   totalLifetimeMana: number
-  // 음소거(T6.2). 세이브에 포함(v3). 사운드 재생 여부는 이 값을 sound.setMuted로 반영해 판단한다.
-  muted: boolean
+  // 볼륨(E-3.3, 세이브 v10). 0~1. muted(v3~v9 불리언)를 대체 — muted true→0, false→기본(0.7)로 이전.
+  // 사운드 재생 게인에 sound.setVolume으로 반영. volume===0이 곧 '음소거'(숨김 업적 '고요한 공방' 기준).
+  volume: number
+  // 숫자 표기(E-3.3, 세이브 v10). formatNumber 모듈 전역(setNotation)에 App이 동기화한다.
+  // 스토어 값으로도 두어 셀렉터가 참조·리렌더할 수 있게 한다(표시 설정이지만 세이브 대상).
+  numberNotation: NumberNotation
+  // 이펙트 강도(E-3.3, 세이브 v10). 'reduced'면 html data-effects='reduced' → CSS가 애니메이션을 끈다.
+  effects: EffectsMode
+  // 글자 크기 배율(E-3.3, 세이브 v10). 1 / 1.15 / 1.3. App이 html zoom으로 적용한다(접근성).
+  fontScale: number
   // 플레이 시간 누적(D-2.3, ms). 세이브에 포함(v4). tick에서 실제 경과를 그대로 누적(오프라인 캡 무관).
   playtimeMs: number
   // M9 충돌 해소 메타(D-5.3, 세이브 v6 포함).
@@ -237,8 +251,12 @@ export interface GameState {
   activateGoldenEvent: (kind: GoldenEventKind, now: number) => void
   // 업적 토스트 소멸(자동 3초 타이머가 호출).
   dismissToast: (id: number) => void
-  // 음소거 토글(T6.2). 세이브 대상 값이라 액션에서 변형한다.
-  toggleMuted: () => void
+  // 볼륨 설정(E-3.3). 0~1로 클램프. 세이브 대상 값이라 액션에서 변형한다(0=음소거).
+  setVolume: (v: number) => void
+  // 숫자 표기/이펙트/글자 크기 설정(E-3.3). 전부 세이브 대상. App이 각각을 표시 레이어에 동기화한다.
+  setNumberNotation: (n: NumberNotation) => void
+  setEffects: (mode: EffectsMode) => void
+  setFontScale: (scale: number) => void
   // 저장 단조 카운터 증가(D-5.3). saveNow가 직렬화 직전 호출해 저장마다 +1을 보장한다(단조 증가).
   bumpSaveCount: () => void
   // 디버그 전용(debug/cheats.ts): 마나 +n (누적 마나 통계도 함께 증가).
@@ -282,7 +300,10 @@ function createInitialState() {
     achievements: [] as string[],
     totalClicks: 0,
     totalLifetimeMana: 0,
-    muted: false,
+    volume: DEFAULT_VOLUME,
+    numberNotation: 'suffix' as NumberNotation,
+    effects: 'full' as EffectsMode,
+    fontScale: 1,
     playtimeMs: 0,
     // deviceId는 이 기기의 영속 식별자(없으면 생성). hardReset해도 기기는 그대로라 동일 값을 다시 읽는다.
     deviceId: getDeviceId(),
@@ -655,8 +676,8 @@ export const useGameStore = create<GameState>()((set) => ({
         lastTick: now,
         // 플레이 시간은 실제 경과를 그대로 누적한다(오프라인 캡·효율과 무관 — 통계 표시 전용).
         playtimeMs: s.playtimeMs + elapsedMs,
-        // 음소거 중 플레이 시간(숨겨진 업적 '고요한 공방'). 음소거 상태의 경과만 별도 누적한다.
-        mutedPlaytimeMs: s.mutedPlaytimeMs + (s.muted ? elapsedMs : 0),
+        // 음소거 중 플레이 시간(숨겨진 업적 '고요한 공방'). volume===0(음소거) 상태의 경과만 별도 누적한다.
+        mutedPlaytimeMs: s.mutedPlaytimeMs + (s.volume === 0 ? elapsedMs : 0),
       }
       // 조제 완료 판정(E-1.2): now >= readyAt이면 brewing → readyPotion로 이동. 진실은 타임스탬프라
       // 오프라인 중에도 진행되고 복귀 첫 tick이 판정한다. 수확은 능동 행위(collectPotion)라 여기선 자동 지급하지 않는다.
@@ -714,7 +735,10 @@ export const useGameStore = create<GameState>()((set) => ({
         achievements,
         totalClicks: st.totalClicks,
         totalLifetimeMana: st.totalLifetimeMana,
-        muted: st.muted,
+        volume: st.volume,
+        numberNotation: st.numberNotation,
+        effects: st.effects,
+        fontScale: st.fontScale,
         playtimeMs: st.playtimeMs,
         // 통계 카운터(v7): 골든 이벤트 클릭·각성 취소·음소거 플레이·드래곤 방문. 각성해도 유지되는 값이라 세이브에서 복원.
         meteorsClicked: st.meteorsClicked,
@@ -1102,7 +1126,12 @@ export const useGameStore = create<GameState>()((set) => ({
 
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
-  toggleMuted: () => set((s) => ({ muted: !s.muted })),
+  // 볼륨: 0~1 클램프. 유한하지 않은 입력은 무시(방어). 0이면 음소거로 취급된다.
+  setVolume: (v) =>
+    set(() => ({ volume: Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : DEFAULT_VOLUME })),
+  setNumberNotation: (n) => set({ numberNotation: n }),
+  setEffects: (mode) => set({ effects: mode }),
+  setFontScale: (scale) => set({ fontScale: scale }),
 
   // 저장마다 +1(단조 증가). saveNow가 직렬화 직전 호출 → 세이브에 이번 저장의 카운터가 담긴다.
   bumpSaveCount: () => set((s) => ({ saveCount: s.saveCount + 1 })),

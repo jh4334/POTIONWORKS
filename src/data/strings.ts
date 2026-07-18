@@ -112,6 +112,12 @@ export const STRINGS = {
     overwriteWarn: '현재 진행 상황을 덮어씁니다. 한 번 더 누르면 복원돼요.',
     confirmOverwrite: '정말 덮어쓸까요?',
     import: '불러오기',
+    // E-3.2 파일 백업(.potionsave). File System Access API 우선, 미지원 시 다운로드/파일선택 폴백.
+    fileSection: '파일 백업',
+    fileExport: '파일로 내보내기',
+    fileImport: '파일에서 불러오기',
+    fileError: '파일을 읽지 못했어요. 다시 시도해 주세요.',
+    fileLoaded: '파일을 읽었어요 — 아래에서 불러오기를 눌러 복원하세요.',
   },
 
   settings: {
@@ -119,6 +125,22 @@ export const STRINGS = {
     sound: '사운드',
     muted: '🔇 음소거됨',
     unmuted: '🔊 켜짐',
+    // E-3.3 설정 확장.
+    volume: '볼륨',
+    mute: '음소거',
+    volumeValue: (pct: number) => `${pct}%`,
+    notation: '숫자 표기',
+    notationSuffix: '1.2M',
+    notationComma: '1,200,000',
+    effects: '이펙트',
+    effectsFull: '전체',
+    effectsReduced: '줄이기',
+    fontScale: '글자 크기',
+    fontSmall: '보통',
+    fontMedium: '크게',
+    fontLarge: '아주 크게',
+    slot: '세이브 슬롯',
+    slotChange: '슬롯 변경',
     backup: '세이브 백업',
     backupButton: '내보내기 / 불러오기',
     reset: '진행 초기화',
@@ -127,6 +149,23 @@ export const STRINGS = {
     resetWarn:
       '모든 진행(마나·시설·업그레이드·각성·업적)이 삭제됩니다. 초기화 전에 백업 내보내기를 권장해요. 한 번 더 누르면 초기화 후 새로고침돼요.',
     credit: '🧪 포션 공방 방치형 · 만든이 POTIONWORKS',
+  },
+
+  // E-3.2 슬롯 선택 화면(타이틀에서 진입). 카드 3개 — 빈 슬롯은 "새 게임", 있는 슬롯은 요약.
+  slotSelect: {
+    title: '슬롯 선택',
+    slotName: (n: number) => `슬롯 ${n}`,
+    active: '활성',
+    empty: '비어 있음',
+    newGame: '새 게임',
+    savedAt: (clock: string) => `저장 ${clock}`,
+    lifetime: (v: string) => `누적 ${v}`,
+    playtime: (v: string) => `플레이 ${v}`,
+    continue: '이어하기',
+    start: '시작',
+    delete: '삭제',
+    deleteConfirm: '삭제할까요?',
+    back: '뒤로',
   },
 
   stats: {
@@ -212,6 +251,9 @@ export const STRINGS = {
   titleScreen: {
     sub: '포션 공방 방치형',
     start: '게임 시작',
+    // E-3.2 슬롯이 하나라도 있으면 노출.
+    continueActive: '이어하기',
+    slotSelect: '슬롯 선택',
   },
 
   toast: {

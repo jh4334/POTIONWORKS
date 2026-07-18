@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatNumber } from './format.ts'
+import { formatNumber, setNotation } from './format.ts'
 
 describe('formatNumber', () => {
   it('1000 미만 정수는 그대로 표시', () => {
@@ -69,5 +69,43 @@ describe('formatNumber', () => {
     // letterIndex 25 → "az"(tier30, 1e90), 26 → "ba"(tier31, 1e93).
     expect(formatNumber(1e90)).toBe('1.00az')
     expect(formatNumber(1e93)).toBe('1.00ba')
+  })
+})
+
+describe('formatNumber notation (E-3.3)', () => {
+  it("comma 인자: 천 단위 구분(1e15 미만)", () => {
+    expect(formatNumber(1234, 'comma')).toBe('1,234')
+    expect(formatNumber(1_000_000, 'comma')).toBe('1,000,000')
+    expect(formatNumber(999, 'comma')).toBe('999')
+    expect(formatNumber(0, 'comma')).toBe('0')
+  })
+
+  it('comma: 1000 미만 소수는 1자리, 그 이상은 정수 자리만', () => {
+    expect(formatNumber(12.34, 'comma')).toBe('12.3')
+    expect(formatNumber(1234.5, 'comma')).toBe('1,235') // 1000 이상 → 정수(반올림)
+  })
+
+  it('comma: 1e15 이상은 suffix로 폴백(하이브리드)', () => {
+    expect(formatNumber(1e15, 'comma')).toBe('1.00aa')
+    expect(formatNumber(1e18, 'comma')).toBe('1.00ab')
+  })
+
+  it('comma: 음수·비유한 안전 처리', () => {
+    expect(formatNumber(-1234, 'comma')).toBe('-1,234')
+    expect(formatNumber(NaN, 'comma')).toBe('0')
+    expect(formatNumber(Infinity, 'comma')).toBe('∞')
+  })
+
+  it('setNotation: 인자 없는 호출의 기본 표기를 바꾼다(모듈 전역)', () => {
+    setNotation('comma')
+    expect(formatNumber(1_234_567)).toBe('1,234,567')
+    setNotation('suffix')
+    expect(formatNumber(1_234_567)).toBe('1.23M')
+  })
+
+  it('명시 인자는 모듈 전역보다 우선', () => {
+    setNotation('comma')
+    expect(formatNumber(1234, 'suffix')).toBe('1.23K')
+    setNotation('suffix') // 다른 테스트에 영향 없게 복원
   })
 })

@@ -1886,3 +1886,168 @@ a,
     }
   }
 }
+
+/* ============================================================
+   E-3.3 설정 확장 — 볼륨 슬라이더 / 세그먼트 토글.
+   ============================================================ */
+.settings-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settings-volume input[type='range'] {
+  flex: 1 1 90px;
+  min-width: 80px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.settings-volume-value {
+  min-width: 40px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.settings-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+/* 숫자 표기·이펙트·글자 크기 세그먼트 토글(작은 버튼들). */
+.settings-segment {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settings-segment .modal-button {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* ============================================================
+   E-3.2 슬롯 선택 화면.
+   ============================================================ */
+.slot-select-card {
+  max-width: 520px;
+  width: 100%;
+}
+
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 20px 0;
+  text-align: left;
+}
+
+.slot-card {
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.slot-card--active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.slot-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.slot-card-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.slot-card-active {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.slot-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+  min-height: 18px;
+}
+
+.slot-card-body--empty {
+  color: var(--text-dim);
+}
+
+.slot-card-line {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.slot-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 타이틀 보조 버튼(슬롯 선택 / 뒤로 / 이어하기 보조). */
+.title-secondary {
+  margin-top: 10px;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.1s ease;
+}
+
+.title-secondary:hover {
+  border-color: var(--accent);
+}
+
+/* ============================================================
+   E-3.3 이펙트 강도 'reduced' — prefers-reduced-motion과 동일 처리(html[data-effects='reduced']).
+   OS 설정과 무관하게 사용자가 선택하면 D-4 연출을 끈다(위 reduced-motion 블록들의 미러).
+   ============================================================ */
+html[data-effects='reduced'] .cauldron-emoji,
+html[data-effects='reduced'] .cauldron-button,
+html[data-effects='reduced'] .cauldron-button.shake,
+html[data-effects='reduced'] .ambient-bubble,
+html[data-effects='reduced'] .generator-row.buy-flash,
+html[data-effects='reduced'] .generator-owned.bump,
+html[data-effects='reduced'] .header-mana.mana-drop,
+html[data-effects='reduced'] .meteor-badge,
+html[data-effects='reduced'] .potion-collect.can-afford,
+html[data-effects='reduced'] .generator-buy.can-afford,
+html[data-effects='reduced'] .upgrade-card.can-afford {
+  animation: none;
+}
+
+html[data-effects='reduced'] .prestige-sequence,
+html[data-effects='reduced'] .burst-layer {
+  display: none;
+}
+
+/* 유성: 이동 애니메이션 대신 중앙 상단에 정적으로 표시(클릭 기회는 보존 — JS가 수명 종료 시 제거). */
+html[data-effects='reduced'] .meteor {
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  animation: none;
+  opacity: 1;
+}

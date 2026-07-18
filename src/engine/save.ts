@@ -10,6 +10,11 @@ import {
   GENERATOR_MAX,
   INITIAL_CLICK_POWER,
   DEVICE_KEY,
+  DEFAULT_VOLUME,
+  FONT_SCALE_OPTIONS,
+  SLOT_KEY_PREFIX,
+  ACTIVE_SLOT_KEY,
+  SAVE_SLOT_COUNT,
 } from '../data/config.ts'
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
@@ -18,7 +23,13 @@ import { STARDUST_UPGRADES, stardustUpgradeById } from '../data/stardustShop.ts'
 import { potionById } from '../data/potions.ts'
 import { challengeById, KNOWN_CHALLENGE_IDS } from '../data/challenges.ts'
 import { STRINGS } from '../data/strings.ts'
-import type { BuyAmount, Brewing, ActiveChallenge } from '../store/gameStore.ts'
+import type {
+  BuyAmount,
+  Brewing,
+  ActiveChallenge,
+  NumberNotation,
+  EffectsMode,
+} from '../store/gameStore.ts'
 
 // 세이브 스키마 버전. 필드 구조를 바꾸면 올리고 migrate에 단계 추가.
 // v2(T5.1): 각성 필드(lifetimeMana/stardust/totalPrestiges) 추가.
@@ -32,7 +43,9 @@ import type { BuyAmount, Brewing, ActiveChallenge } from '../store/gameStore.ts'
 //   potionsBrewed(수확 누적 통계). 버프(activeBuffs)는 여전히 세이브 비포함(파생 소멸).
 // v9(E-2.2): 챌린지 런 추가 — activeChallenge(진행 중 챌린지 {id, startedAt} 또는 null),
 //   completedChallenges(완료 id 목록 → 영구 생산 배율의 진실). 각성해도 유지되는 값이라 세이브 포함.
-export const SAVE_VERSION = 9
+// v10(E-3.3): 설정 확장 — muted(불리언) → volume(0~1)로 대체 + 표시 설정 3종(numberNotation/effects/fontScale) 추가.
+//   전부 세이브 대상(슬롯별로 유지). v9→v10 이전 시 muted true→volume 0, false→기본(0.7).
+export const SAVE_VERSION = 10
 
 // 직렬화 대상(진실만). 파생값은 제외.
 export interface SaveState {
@@ -50,8 +63,13 @@ export interface SaveState {
   achievements: string[]
   totalClicks: number
   totalLifetimeMana: number
-  // 음소거(v3).
-  muted: boolean
+  // 볼륨(v10). 0~1. v3~v9의 muted(불리언)를 대체. 사운드 게인에 반영, volume===0이 곧 음소거.
+  volume: number
+  // 표시 설정(v10). numberNotation=숫자 표기('suffix'|'comma'), effects=이펙트 강도('full'|'reduced'),
+  // fontScale=글자 크기 배율(1|1.15|1.3). 슬롯별로 유지되는 값이라 세이브에 포함한다.
+  numberNotation: NumberNotation
+  effects: EffectsMode
+  fontScale: number
   // 플레이 시간 누적(v4, ms). tick에서 실제 경과를 그대로 누적(오프라인 캡과 무관). 통계 표시용.
   playtimeMs: number
   // 스타더스트 상점 레벨(v5). id → 레벨. 각성해도 유지(스타더스트 영역).
@@ -141,7 +159,10 @@ export function toSaveData(state: SaveState, now: number = Date.now()): SaveData
       achievements: [...state.achievements],
       totalClicks: state.totalClicks,
       totalLifetimeMana: state.totalLifetimeMana,
-      muted: state.muted,
+      volume: state.volume,
+      numberNotation: state.numberNotation,
+      effects: state.effects,
+      fontScale: state.fontScale,
       playtimeMs: state.playtimeMs,
       stardustUpgrades: { ...state.stardustUpgrades },
       // deviceId=저장 시점의 이 기기 값(진실 기록), saveCount=스토어의 단조 카운터 현재값.
@@ -269,6 +290,27 @@ function normalizeCompletedChallenges(v: unknown): string[] {
   return [...seen]
 }
 
+// volume 정규화(v10): 유한한 0~1만 채택(클램프), 그 외는 fallback. muted 대체 값.
+function normalizeVolume(v: unknown, fallback: number): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return fallback
+  return Math.min(1, Math.max(0, v))
+}
+
+// numberNotation 정규화(v10): 'comma'만 명시적으로, 그 외(누락·오타)는 기본 'suffix'.
+function normalizeNotation(v: unknown): NumberNotation {
+  return v === 'comma' ? 'comma' : 'suffix'
+}
+
+// effects 정규화(v10): 'reduced'만 명시적으로, 그 외는 기본 'full'.
+function normalizeEffects(v: unknown): EffectsMode {
+  return v === 'reduced' ? 'reduced' : 'full'
+}
+
+// fontScale 정규화(v10): 허용 배율(FONT_SCALE_OPTIONS) 중 하나만 채택, 그 외는 기본 1.
+function normalizeFontScale(v: unknown): number {
+  return typeof v === 'number' && (FONT_SCALE_OPTIONS as readonly number[]).includes(v) ? v : 1
+}
+
 // achievements 정규화: 알려진 업적 id 문자열만, 중복 제거.
 function normalizeAchievements(v: unknown): string[] {
   if (!Array.isArray(v)) return []
@@ -291,6 +333,8 @@ function normalizeAchievements(v: unknown): string[] {
 // v6→v7: 통계 카운터(meteorsClicked/prestigeCancels/mutedPlaytimeMs/dragonVisits)가 없으므로 0으로 초기화한다.
 // v7→v8: 포션 조제 상태(brewing/readyPotion/potionsBrewed)가 없으므로 null/null/0으로 초기화한다.
 // v8→v9: 챌린지 런(activeChallenge/completedChallenges)이 없으므로 null/[]로 초기화한다.
+// v9→v10: muted(불리언)를 volume(0~1)로 이전(true→0, false→0.7) + 표시 설정 3종(numberNotation='suffix',
+//   effects='full', fontScale=1)을 기본값으로 초기화한다.
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
     console.warn(STRINGS.log.save.notObject)
@@ -334,7 +378,16 @@ export function migrate(raw: unknown): SaveData | null {
   const achievements = isV3Plus ? normalizeAchievements(s.achievements) : []
   const totalClicks = isV3Plus ? normalizeNonNegInt(s.totalClicks, 0) : 0
   const totalLifetimeMana = isV3Plus ? normalizeNonNeg(s.totalLifetimeMana, lifetimeMana) : lifetimeMana
-  const muted = isV3Plus ? s.muted === true : false
+
+  // 볼륨(v10). v9 이하엔 없다 → v3~v9의 muted(불리언)를 참조해 이전한다: muted true→0(음소거), false→기본(0.7).
+  //   v2 이하엔 muted도 없으므로 기본값. v10 이상은 저장된 volume을 0~1로 클램프해 채택.
+  //   표시 설정(numberNotation/effects/fontScale)도 v9 이하엔 없으므로 기본값, v10 이상은 정규화해 채택.
+  const isV10Plus = raw.version >= 10
+  const legacyMuted = isV3Plus ? s.muted === true : false
+  const volume = isV10Plus ? normalizeVolume(s.volume, DEFAULT_VOLUME) : legacyMuted ? 0 : DEFAULT_VOLUME
+  const numberNotation = isV10Plus ? normalizeNotation(s.numberNotation) : 'suffix'
+  const effects = isV10Plus ? normalizeEffects(s.effects) : 'full'
+  const fontScale = isV10Plus ? normalizeFontScale(s.fontScale) : 1
 
   // v3 이하엔 playtimeMs 필드가 없다 → 0으로 시작. v4 이상은 검증해 채택(누락·손상 시 0).
   const isV4Plus = raw.version >= 4
@@ -390,7 +443,10 @@ export function migrate(raw: unknown): SaveData | null {
       achievements,
       totalClicks,
       totalLifetimeMana,
-      muted,
+      volume,
+      numberNotation,
+      effects,
+      fontScale,
       playtimeMs,
       stardustUpgrades,
       deviceId,
@@ -405,6 +461,92 @@ export function migrate(raw: unknown): SaveData | null {
       activeChallenge,
       completedChallenges,
     },
+  }
+}
+
+// --- 세이브 슬롯 (E-3.2) ---
+// 슬롯별 localStorage 키. 기존 단일 키(SAVE_KEY)는 최초 1회 슬롯 1로 이전된다(migrateLegacySlot).
+// localStorage 접근·저장 함수는 전부 "활성 슬롯 키"를 참조하도록 함수화한다 — 슬롯 전환은 활성 번호만 바꾸면 된다.
+export function slotKey(n: number): string {
+  return `${SLOT_KEY_PREFIX}${n}`
+}
+
+// 활성 슬롯 번호(1..SAVE_SLOT_COUNT). 없거나 손상되면 1(기본). localStorage 접근 실패도 1로.
+export function activeSlot(): number {
+  try {
+    const raw = globalThis.localStorage?.getItem(ACTIVE_SLOT_KEY)
+    const n = raw === null || raw === undefined ? NaN : parseInt(raw, 10)
+    if (Number.isInteger(n) && n >= 1 && n <= SAVE_SLOT_COUNT) return n
+  } catch {
+    /* 접근 실패 시 기본 슬롯 */
+  }
+  return 1
+}
+
+// 활성 슬롯 번호 저장. 범위를 벗어나면 무시(방어).
+export function setActiveSlot(n: number): void {
+  if (!Number.isInteger(n) || n < 1 || n > SAVE_SLOT_COUNT) return
+  try {
+    globalThis.localStorage?.setItem(ACTIVE_SLOT_KEY, String(n))
+  } catch {
+    /* 저장 실패는 조용히 넘어간다(비영속) */
+  }
+}
+
+// 현재 활성 슬롯의 세이브 키·손상 백업 키. localStorage 접근 함수는 전부 이 키를 쓴다.
+function activeSlotKey(): string {
+  return slotKey(activeSlot())
+}
+function corruptKeyFor(key: string): string {
+  return `${key}-corrupt`
+}
+
+// 기존 단일 세이브(SAVE_KEY)를 슬롯 1로 무손실 이전(최초 1회). 데이터 손실을 절대 내지 않도록:
+//   - 슬롯 1이 이미 있으면 덮어쓰지 않는다(복사 스킵).
+//   - 복사가 성공한 뒤에만 기존 키를 제거한다(복사 실패 시 원본 유지).
+// 앱 시작(loadGame) 최상단에서 1회 호출한다. localStorage 부재/예외에도 던지지 않는다.
+export function migrateLegacySlot(): void {
+  try {
+    const ls = globalThis.localStorage
+    if (!ls) return
+    const legacy = ls.getItem(SAVE_KEY)
+    if (legacy === null) return // 이전할 기존 세이브 없음
+    const slot1 = slotKey(1)
+    if (ls.getItem(slot1) === null) {
+      ls.setItem(slot1, legacy) // 슬롯 1이 비어 있을 때만 복사
+    }
+    // 슬롯 1로의 복사(또는 이미 존재)가 확인된 뒤에만 기존 키 제거 — 원본을 잃지 않는다.
+    if (ls.getItem(slot1) !== null) ls.removeItem(SAVE_KEY)
+    // 손상 백업 키도 함께 이전(있으면).
+    const legacyCorrupt = ls.getItem(SAVE_CORRUPT_KEY)
+    if (legacyCorrupt !== null) {
+      const slot1Corrupt = corruptKeyFor(slot1)
+      if (ls.getItem(slot1Corrupt) === null) ls.setItem(slot1Corrupt, legacyCorrupt)
+      if (ls.getItem(slot1Corrupt) !== null) ls.removeItem(SAVE_CORRUPT_KEY)
+    }
+  } catch {
+    console.warn(STRINGS.log.save.accessFailed)
+  }
+}
+
+// 특정 슬롯의 원본 문자열을 읽는다(파싱 전). listSlots·switchSlot 저장 판정에 쓴다. 접근 실패는 null.
+export function readSlotRaw(n: number): string | null {
+  try {
+    return globalThis.localStorage?.getItem(slotKey(n)) ?? null
+  } catch {
+    return null
+  }
+}
+
+// 특정 슬롯 삭제(세이브 + 손상 백업). 확인은 UI에서 한다.
+export function deleteSlot(n: number): void {
+  try {
+    const ls = globalThis.localStorage
+    if (!ls) return
+    ls.removeItem(slotKey(n))
+    ls.removeItem(corruptKeyFor(slotKey(n)))
+  } catch {
+    console.warn(STRINGS.log.save.removeFailed)
   }
 }
 
@@ -428,6 +570,8 @@ function hasFiniteNumbers(state: SaveState): boolean {
     state.mutedPlaytimeMs,
     state.dragonVisits,
     state.potionsBrewed,
+    state.volume,
+    state.fontScale,
   ]
   for (const n of scalars) {
     if (typeof n !== 'number' || !Number.isFinite(n)) return false
@@ -453,7 +597,7 @@ export function saveToLocal(state: SaveState, now?: number): boolean {
     return false
   }
   try {
-    localStorage.setItem(SAVE_KEY, serialize(state, now))
+    localStorage.setItem(activeSlotKey(), serialize(state, now))
     return true
   } catch {
     console.warn(STRINGS.log.save.saveFailed)
@@ -468,10 +612,10 @@ export type LoadResult =
   | { status: 'ok'; save: SaveData }
   | { status: 'corrupt' }
 
-// 원본 raw를 손상 백업 키로 보존(최신 1개만). 실패해도 조용히 넘어간다.
+// 원본 raw를 손상 백업 키로 보존(활성 슬롯별, 최신 1개만). 실패해도 조용히 넘어간다.
 function preserveCorrupt(raw: string): void {
   try {
-    localStorage.setItem(SAVE_CORRUPT_KEY, raw)
+    localStorage.setItem(corruptKeyFor(activeSlotKey()), raw)
   } catch {
     console.warn(STRINGS.log.save.corruptBackupFailed)
   }
@@ -480,7 +624,7 @@ function preserveCorrupt(raw: string): void {
 export function loadFromLocalResult(): LoadResult {
   let raw: string | null
   try {
-    raw = localStorage.getItem(SAVE_KEY)
+    raw = localStorage.getItem(activeSlotKey())
   } catch {
     console.warn(STRINGS.log.save.accessFailed)
     return { status: 'empty' }
@@ -502,7 +646,7 @@ export function loadFromLocal(): SaveData | null {
 
 export function clearSave(): void {
   try {
-    localStorage.removeItem(SAVE_KEY)
+    localStorage.removeItem(activeSlotKey())
   } catch {
     console.warn(STRINGS.log.save.removeFailed)
   }
