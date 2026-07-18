@@ -4,10 +4,17 @@
 import { OFFLINE_CAP_MS, OFFLINE_EFFICIENCY } from '../data/config.ts'
 
 // 자리 비운 동안 적립할 마나량.
-//   min(경과, 8h) / 1000 × mps × 0.5
+//   min(경과, capMs) / 1000 × mps × efficiency
 // 경과가 0/음수(시계 역행)거나 mps가 0/음수면 지급 없음(0).
-export function offlineEarnings(elapsedMs: number, mps: number): number {
+// efficiency·capMs 기본값은 config 상수 — 스타더스트 상점 강화(꿈꾸는 솥·시간의 모래)가
+// 적용될 때 호출부가 effectiveOfflineEfficiency/CapMs로 실효값을 주입한다(D-3.1).
+export function offlineEarnings(
+  elapsedMs: number,
+  mps: number,
+  efficiency: number = OFFLINE_EFFICIENCY,
+  capMs: number = OFFLINE_CAP_MS,
+): number {
   if (elapsedMs <= 0 || mps <= 0) return 0
-  const cappedMs = Math.min(elapsedMs, OFFLINE_CAP_MS)
-  return (cappedMs / 1000) * mps * OFFLINE_EFFICIENCY
+  const cappedMs = Math.min(elapsedMs, capMs)
+  return (cappedMs / 1000) * mps * efficiency
 }

@@ -7,6 +7,8 @@ import GeneratorList from './components/GeneratorList.tsx'
 import OfflineModal from './components/OfflineModal.tsx'
 import AchievementToast from './components/AchievementToast.tsx'
 import BurstEffect from './components/BurstEffect.tsx'
+import Meteor from './components/Meteor.tsx'
+import PrestigeSequence from './components/PrestigeSequence.tsx'
 import TitleScreen from './components/TitleScreen.tsx'
 import { startTickLoop } from './engine/tick.ts'
 import { startAutosave, hadSaveOnLoad } from './engine/autosave.ts'
@@ -22,6 +24,14 @@ export default function App() {
   const muted = useGameStore((s) => s.muted)
   useEffect(() => setMuted(muted), [muted])
 
+  // 세이브 로드 실패 안내(D-1.1). loadGame이 corrupt를 감지하면 스토어에 세워둔다.
+  const loadFailed = useGameStore((s) => s.loadFailed)
+  const dismissLoadFailed = useGameStore((s) => s.dismissLoadFailed)
+
+  // 저장 실패 안내(D-2.5). saveNow가 저장에 실패하면 스토어에 세워둔다(1회성 경고 배너).
+  const saveFailed = useGameStore((s) => s.saveFailed)
+  const dismissSaveFailed = useGameStore((s) => s.dismissSaveFailed)
+
   // 타이틀 오버레이: 최초 방문(세이브 없음)에서만 노출. 초기값을 마운트 시 1회 고정한다.
   const [showTitle, setShowTitle] = useState(() => !hadSaveOnLoad())
 
@@ -29,6 +39,36 @@ export default function App() {
 
   return (
     <div className="app">
+      {loadFailed && (
+        <div className="load-failed-banner" role="alert">
+          <span className="load-failed-text">
+            저장 데이터를 읽지 못했습니다. 원본은 안전하게 백업해 두었어요(초기화되지 않음).
+          </span>
+          <button
+            type="button"
+            className="load-failed-close"
+            onClick={dismissLoadFailed}
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {saveFailed && (
+        <div className="load-failed-banner" role="alert">
+          <span className="load-failed-text">
+            저장이 되지 않고 있어요 — 브라우저 저장공간을 확인하세요.
+          </span>
+          <button
+            type="button"
+            className="load-failed-close"
+            onClick={dismissSaveFailed}
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <Header />
       <main className="layout">
         <section className="layout-left">
@@ -43,6 +83,8 @@ export default function App() {
       <OfflineModal />
       <AchievementToast />
       <BurstEffect />
+      <Meteor />
+      <PrestigeSequence />
     </div>
   )
 }

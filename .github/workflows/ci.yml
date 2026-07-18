@@ -1,0 +1,24 @@
+name: CI
+
+# PR + main 외 브랜치 push 시 테스트·빌드로 회귀를 조기에 잡는다(D-2.9).
+# main push는 deploy.yml이 동일 검증 후 배포하므로 여기선 제외한다(중복 실행 방지).
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

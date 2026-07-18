@@ -32,6 +32,9 @@ export default function BurstEffect() {
   const [bursts, setBursts] = useState<Burst[]>([])
   // burstKey===0은 초기값 — 로드 시 버스트가 터지지 않도록 첫 변화 전까지 무시한다.
   const seen = useRef(0)
+  // 각 버스트의 제거 타이머를 모아둔다. effect cleanup에서 개별 취소하면(이전 구현) 연속 버스트 시
+  // 직전 버스트의 제거 타이머가 취소돼 DOM이 영구 잔류했다(D-4 누수). 타이머는 unmount에서만 일괄 정리한다.
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
 
   useEffect(() => {
     if (burstKey === 0 || burstKey === seen.current) return
@@ -40,9 +43,14 @@ export default function BurstEffect() {
     setBursts((prev) => [...prev, burst])
     const t = setTimeout(() => {
       setBursts((prev) => prev.filter((b) => b.key !== burst.key))
+      timers.current = timers.current.filter((id) => id !== t)
     }, BURST_LIFETIME_MS)
-    return () => clearTimeout(t)
+    timers.current.push(t)
+    // cleanup에서 이 타이머를 취소하지 않는다 — 연속 버스트가 서로의 제거를 막지 않도록.
   }, [burstKey])
+
+  // 언마운트 시에만 남은 타이머 일괄 정리(누수 방지).
+  useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
   if (bursts.length === 0) return null
 

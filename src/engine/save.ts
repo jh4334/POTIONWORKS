@@ -4,16 +4,26 @@
 // 저장 대상은 "진실"만 담는다 — 파생값(manaPerSecond, clickPower)은 저장하지 않고
 // 로드 시 recalcDerived로 재계산한다(스토어 loadSave). 이렇게 해야 수식이 바뀌어도
 // 세이브가 낡은 파생값으로 오염되지 않는다.
-import { SAVE_KEY } from '../data/config.ts'
+import {
+  SAVE_KEY,
+  SAVE_CORRUPT_KEY,
+  GENERATOR_MAX,
+  INITIAL_CLICK_POWER,
+  DEVICE_KEY,
+} from '../data/config.ts'
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
 import { KNOWN_ACHIEVEMENT_IDS } from '../data/achievements.ts'
+import { STARDUST_UPGRADES, stardustUpgradeById } from '../data/stardustShop.ts'
 import type { BuyAmount } from '../store/gameStore.ts'
 
 // 세이브 스키마 버전. 필드 구조를 바꾸면 올리고 migrate에 단계 추가.
 // v2(T5.1): 각성 필드(lifetimeMana/stardust/totalPrestiges) 추가.
 // v3(T6.1/T6.2): 업적/통계(achievements/totalClicks/totalLifetimeMana) + 음소거(muted) 추가.
-export const SAVE_VERSION = 3
+// v4(D-2.3): 플레이 시간(playtimeMs) 추가 — 통계 패널용 실제 경과 누적(캡 무관).
+// v5(D-3): 스타더스트 상점 레벨(stardustUpgrades) 추가 — 각성해도 유지되는 영구 강화 트랙.
+// v6(D-5.3): M9 충돌 해소 메타(deviceId·saveCount) 추가 — 클라이언트 시계 대신 기기·단조 카운터로 판정.
+export const SAVE_VERSION = 6
 
 // 직렬화 대상(진실만). 파생값은 제외.
 export interface SaveState {
@@ -33,6 +43,48 @@ export interface SaveState {
   totalLifetimeMana: number
   // 음소거(v3).
   muted: boolean
+  // 플레이 시간 누적(v4, ms). tick에서 실제 경과를 그대로 누적(오프라인 캡과 무관). 통계 표시용.
+  playtimeMs: number
+  // 스타더스트 상점 레벨(v5). id → 레벨. 각성해도 유지(스타더스트 영역).
+  stardustUpgrades: Record<string, number>
+  // M9 충돌 해소 메타(v6). deviceId=저장 시점의 이 기기 식별자(localStorage 별도 키에 영속),
+  // saveCount=저장마다 +1인 단조 카운터. 두 값으로 "어느 기기의 몇 번째 저장인지"를 시계 없이 판정한다.
+  deviceId: string
+  saveCount: number
+}
+
+// 이 기기의 영속 식별자(D-5.3). localStorage 별도 키에서 읽고, 없으면 UUID를 생성해 저장한다.
+// localStorage/crypto 부재(테스트·비브라우저) 시에도 던지지 않고 임시 UUID를 돌려준다(비영속).
+export function getDeviceId(): string {
+  let ls: Storage | undefined
+  try {
+    ls = globalThis.localStorage
+  } catch {
+    ls = undefined
+  }
+  try {
+    const existing = ls?.getItem(DEVICE_KEY)
+    if (typeof existing === 'string' && existing.length > 0) return existing
+  } catch {
+    /* 접근 실패 시 아래에서 새 id 생성 */
+  }
+  const id = newUuid()
+  try {
+    ls?.setItem(DEVICE_KEY, id)
+  } catch {
+    /* 저장 실패해도 이번 세션 id는 반환한다(비영속) */
+  }
+  return id
+}
+
+// crypto.randomUUID 우선, 부재 환경 폴백. 충돌 무결성보다 존재성이 목적이라 폴백도 충분하다.
+function newUuid(): string {
+  try {
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID()
+  } catch {
+    /* 폴백으로 */
+  }
+  return `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 export interface SaveData {
@@ -42,8 +94,10 @@ export interface SaveData {
 }
 
 // 알려진 id 집합(마이그레이션 시 미지의 generator/upgrade id를 걸러낸다).
-const KNOWN_GENERATOR_IDS = new Set(GENERATORS.map((g) => g.id))
+// Set<string>으로 넓혀 외부 입력(string 키) 조회를 허용한다 — GeneratorId로 좁히면 .has(string)이 막힌다.
+const KNOWN_GENERATOR_IDS = new Set<string>(GENERATORS.map((g) => g.id))
 const KNOWN_UPGRADE_IDS = new Set(UPGRADES.map((u) => u.id))
+const KNOWN_STARDUST_IDS = new Set(STARDUST_UPGRADES.map((u) => u.id))
 
 // 스토어 상태(GameState)는 SaveState의 상위 집합이라 그대로 넘길 수 있다.
 // now를 인자로 받아 테스트에서 결정적(deterministic) 라운드트립이 가능하게 한다.
@@ -65,6 +119,11 @@ export function toSaveData(state: SaveState, now: number = Date.now()): SaveData
       totalClicks: state.totalClicks,
       totalLifetimeMana: state.totalLifetimeMana,
       muted: state.muted,
+      playtimeMs: state.playtimeMs,
+      stardustUpgrades: { ...state.stardustUpgrades },
+      // deviceId=저장 시점의 이 기기 값(진실 기록), saveCount=스토어의 단조 카운터 현재값.
+      deviceId: state.deviceId,
+      saveCount: state.saveCount,
     },
   }
 }
@@ -99,13 +158,19 @@ function normalizeNonNeg(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback
 }
 
-// generators 정규화: 알려진 id + 유한한 0 이상 수치만 채택.
+// 유한한 0 이상 정수만 채택(내림), 그 외는 fallback. 카운터류(stardust/prestige/clicks)에 사용.
+function normalizeNonNegInt(v: unknown, fallback: number): number {
+  return Math.floor(normalizeNonNeg(v, fallback))
+}
+
+// generators 정규화: 알려진 id + 유한·0 이상·정수(내림)·상한(GENERATOR_MAX) 클램프.
+// 소수·1e308·Infinity 등 오염값이 파생 계산(MPS)으로 전파되는 것을 막는 방어 정규화(D-1.1).
 function normalizeGenerators(v: unknown): Record<string, number> {
   const out: Record<string, number> = {}
   if (!isRecord(v)) return out
   for (const [id, count] of Object.entries(v)) {
     if (KNOWN_GENERATOR_IDS.has(id) && typeof count === 'number' && Number.isFinite(count) && count >= 0) {
-      out[id] = count
+      out[id] = Math.min(Math.floor(count), GENERATOR_MAX)
     }
   }
   return out
@@ -119,6 +184,21 @@ function normalizeUpgrades(v: unknown): string[] {
     if (typeof id === 'string' && KNOWN_UPGRADE_IDS.has(id)) seen.add(id)
   }
   return [...seen]
+}
+
+// stardustUpgrades 정규화: 알려진 상점 id만, 유한·1 이상·정수(내림)·maxLevel 클램프.
+// 미지 id·손상값(0/음수/NaN)은 버린다 — 오염된 레벨이 파생 계산으로 전파되는 것을 막는다(D-3).
+function normalizeStardustUpgrades(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!isRecord(v)) return out
+  for (const [id, level] of Object.entries(v)) {
+    const def = stardustUpgradeById(id)
+    if (!def || !KNOWN_STARDUST_IDS.has(id)) continue
+    if (typeof level !== 'number' || !Number.isFinite(level) || level < 1) continue
+    const clamped = def.maxLevel === null ? Math.floor(level) : Math.min(Math.floor(level), def.maxLevel)
+    if (clamped >= 1) out[id] = clamped
+  }
+  return out
 }
 
 // achievements 정규화: 알려진 업적 id 문자열만, 중복 제거.
@@ -137,6 +217,9 @@ function normalizeAchievements(v: unknown): string[] {
 //   stardust=0, totalPrestiges=0으로 초기화한다.
 // v2→v3: 업적/통계 필드가 없으므로 achievements=[], totalClicks=0,
 //   totalLifetimeMana=lifetimeMana(이번 생 누적을 총 누적의 출발값으로), muted=false.
+// v3→v4: playtimeMs가 없으므로 0으로 초기화한다.
+// v4→v5: stardustUpgrades가 없으므로 빈 객체({})로 초기화한다.
+// v5→v6: deviceId는 현재 기기값(getDeviceId), saveCount=0으로 초기화한다(단조 카운터 출발점).
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
     console.warn('[save] 세이브가 객체가 아닙니다 — 무시합니다.')
@@ -159,43 +242,55 @@ export function migrate(raw: unknown): SaveData | null {
     return null
   }
   const s = raw.state
-  if (
-    typeof s.mana !== 'number' ||
-    !Number.isFinite(s.mana) ||
-    typeof s.basePower !== 'number' ||
-    !Number.isFinite(s.basePower) ||
-    typeof s.lastTick !== 'number' ||
-    !Number.isFinite(s.lastTick)
-  ) {
-    console.warn('[save] state 필수 수치 필드가 유효하지 않습니다 — 무시합니다.')
-    return null
-  }
+  // (D-1.1) 수치 필드는 거부하지 않고 정규화한다 — 필드 1개 손상으로 세이브 전체를 버려 파괴하는 것을 막는다.
+  // mana는 음수·NaN·누락 시 0, basePower는 INITIAL_CLICK_POWER, lastTick은 savedAt(검증 완료)로 폴백.
+  const mana = normalizeNonNeg(s.mana, 0)
+  const basePower = normalizeNonNeg(s.basePower, INITIAL_CLICK_POWER)
+  const lastTick =
+    typeof s.lastTick === 'number' && Number.isFinite(s.lastTick) ? s.lastTick : raw.savedAt
 
   // v1엔 각성 필드가 없다 → lifetimeMana는 mana로 보수적 초기화, stardust/totalPrestiges는 0.
-  // v2 이상은 저장된 값을 검증해 채택(누락·손상 시 동일 fallback).
+  // v2 이상은 저장된 값을 검증해 채택(누락·손상 시 동일 fallback). stardust/totalPrestiges는 정수화.
   const isV2Plus = raw.version >= 2
-  const lifetimeMana = isV2Plus ? normalizeNonNeg(s.lifetimeMana, s.mana) : s.mana
-  const stardust = isV2Plus ? normalizeNonNeg(s.stardust, 0) : 0
-  const totalPrestiges = isV2Plus ? normalizeNonNeg(s.totalPrestiges, 0) : 0
+  const lifetimeMana = isV2Plus ? normalizeNonNeg(s.lifetimeMana, mana) : mana
+  const stardust = isV2Plus ? normalizeNonNegInt(s.stardust, 0) : 0
+  const totalPrestiges = isV2Plus ? normalizeNonNegInt(s.totalPrestiges, 0) : 0
 
   // v2 이하엔 업적/통계·음소거 필드가 없다 → achievements=[], totalClicks=0,
   // totalLifetimeMana=lifetimeMana(이번 생 누적을 총 누적 출발값으로), muted=false.
-  // v3 이상은 저장된 값을 검증해 채택(누락·손상 시 동일 fallback).
+  // v3 이상은 저장된 값을 검증해 채택(누락·손상 시 동일 fallback). totalClicks는 정수화.
   const isV3Plus = raw.version >= 3
   const achievements = isV3Plus ? normalizeAchievements(s.achievements) : []
-  const totalClicks = isV3Plus ? normalizeNonNeg(s.totalClicks, 0) : 0
+  const totalClicks = isV3Plus ? normalizeNonNegInt(s.totalClicks, 0) : 0
   const totalLifetimeMana = isV3Plus ? normalizeNonNeg(s.totalLifetimeMana, lifetimeMana) : lifetimeMana
   const muted = isV3Plus ? s.muted === true : false
+
+  // v3 이하엔 playtimeMs 필드가 없다 → 0으로 시작. v4 이상은 검증해 채택(누락·손상 시 0).
+  const isV4Plus = raw.version >= 4
+  const playtimeMs = isV4Plus ? normalizeNonNeg(s.playtimeMs, 0) : 0
+
+  // v4 이하엔 stardustUpgrades가 없다 → 빈 객체. v5 이상은 정규화해 채택(미지 id·손상값 제거).
+  const isV5Plus = raw.version >= 5
+  const stardustUpgrades = isV5Plus ? normalizeStardustUpgrades(s.stardustUpgrades) : {}
+
+  // v5 이하엔 M9 메타가 없다 → deviceId=현재 기기값, saveCount=0. v6 이상은 저장값을 검증해 채택.
+  // (v6 세이브의 deviceId는 그 저장을 만든 기기의 값 — 마이그레이션이 덮어쓰지 않고 그대로 보존한다.)
+  const isV6Plus = raw.version >= 6
+  const deviceId =
+    isV6Plus && typeof s.deviceId === 'string' && s.deviceId.length > 0
+      ? s.deviceId
+      : getDeviceId()
+  const saveCount = isV6Plus ? normalizeNonNegInt(s.saveCount, 0) : 0
 
   return {
     version: SAVE_VERSION,
     savedAt: raw.savedAt,
     state: {
-      mana: s.mana,
-      basePower: s.basePower,
+      mana,
+      basePower,
       generators: normalizeGenerators(s.generators),
       upgrades: normalizeUpgrades(s.upgrades),
-      lastTick: s.lastTick,
+      lastTick,
       buyAmount: normalizeBuyAmount(s.buyAmount),
       lifetimeMana,
       stardust,
@@ -204,29 +299,95 @@ export function migrate(raw: unknown): SaveData | null {
       totalClicks,
       totalLifetimeMana,
       muted,
+      playtimeMs,
+      stardustUpgrades,
+      deviceId,
+      saveCount,
     },
   }
 }
 
 // --- localStorage ---
-export function saveToLocal(state: SaveState, now?: number): void {
+// 저장 직전 유한성 검사(D-1.1): 상태에 비유한 수치가 하나라도 있으면 저장을 스킵한다.
+// 오염된 상태로 localStorage를 덮어써 마지막 정상 세이브를 파괴하는 것을 막는다.
+function hasFiniteNumbers(state: SaveState): boolean {
+  const scalars = [
+    state.mana,
+    state.basePower,
+    state.lastTick,
+    state.lifetimeMana,
+    state.stardust,
+    state.totalPrestiges,
+    state.totalClicks,
+    state.totalLifetimeMana,
+    state.playtimeMs,
+    state.saveCount,
+  ]
+  for (const n of scalars) {
+    if (typeof n !== 'number' || !Number.isFinite(n)) return false
+  }
+  for (const count of Object.values(state.generators)) {
+    if (typeof count !== 'number' || !Number.isFinite(count)) return false
+  }
+  for (const level of Object.values(state.stardustUpgrades)) {
+    if (typeof level !== 'number' || !Number.isFinite(level)) return false
+  }
+  return true
+}
+
+// 성공하면 true, 실패(비유한 수치 스킵·localStorage 예외)하면 false를 돌려준다(D-2.5).
+// 호출부(autosave.saveNow)가 이 값으로 "저장됨" 시각 갱신 또는 저장 실패 배너를 띄운다.
+export function saveToLocal(state: SaveState, now?: number): boolean {
+  if (!hasFiniteNumbers(state)) {
+    console.warn('[save] 상태에 비유한 수치가 있어 저장을 건너뜁니다(마지막 정상 세이브 보호).')
+    return false
+  }
   try {
     localStorage.setItem(SAVE_KEY, serialize(state, now))
+    return true
   } catch {
     console.warn('[save] localStorage 저장 실패(용량/권한).')
+    return false
   }
 }
 
-export function loadFromLocal(): SaveData | null {
+// 로드 결과: 세이브 없음(empty) / 정상(ok) / 손상(corrupt, 원본은 백업됨).
+// loadGame이 corrupt를 구분해 사용자에게 안내하기 위해 status를 노출한다.
+export type LoadResult =
+  | { status: 'empty' }
+  | { status: 'ok'; save: SaveData }
+  | { status: 'corrupt' }
+
+// 원본 raw를 손상 백업 키로 보존(최신 1개만). 실패해도 조용히 넘어간다.
+function preserveCorrupt(raw: string): void {
+  try {
+    localStorage.setItem(SAVE_CORRUPT_KEY, raw)
+  } catch {
+    console.warn('[save] 손상 세이브 백업 실패(용량/권한).')
+  }
+}
+
+export function loadFromLocalResult(): LoadResult {
   let raw: string | null
   try {
     raw = localStorage.getItem(SAVE_KEY)
   } catch {
     console.warn('[save] localStorage 접근 실패.')
-    return null
+    return { status: 'empty' }
   }
-  if (raw === null) return null
-  return deserialize(raw)
+  if (raw === null) return { status: 'empty' }
+  const save = deserialize(raw)
+  if (save === null) {
+    // deserialize/migrate 실패 — 원본을 파괴하지 않고 백업한 뒤에만 실패로 보고한다(D-1.1).
+    preserveCorrupt(raw)
+    return { status: 'corrupt' }
+  }
+  return { status: 'ok', save }
+}
+
+export function loadFromLocal(): SaveData | null {
+  const result = loadFromLocalResult()
+  return result.status === 'ok' ? result.save : null
 }
 
 export function clearSave(): void {

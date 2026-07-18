@@ -2,12 +2,14 @@
 // 조건은 데이터 기술식(discriminated union) — 달성 판정은 engine/formulas.ts 순수 함수가 담당한다.
 // 각 업적은 달성 시 전체 생산 +1%(ACHIEVEMENT_MULT_PER, config)를 준다.
 
-// 달성 조건 종류.
+import type { GeneratorId } from './generators.ts'
+
+// 달성 조건 종류. 시설 참조(generatorId)는 GeneratorId로 좁혀 오타를 컴파일 단계에서 잡는다(D-5.1).
 export type AchievementCondition =
   // 총 클릭 수(전생 포함 누적, 각성해도 리셋 안 됨) min 이상.
   | { kind: 'clicks'; min: number }
   // 특정 시설(generatorId) 현재 보유 수 min 이상.
-  | { kind: 'generatorCount'; generatorId: string; min: number }
+  | { kind: 'generatorCount'; generatorId: GeneratorId; min: number }
   // 전생 포함 총 누적 마나(totalLifetimeMana) min 이상.
   | { kind: 'lifetimeMana'; min: number }
   // 총 각성 횟수 min 이상.

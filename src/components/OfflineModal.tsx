@@ -1,17 +1,26 @@
 import { useGameStore } from '../store/gameStore.ts'
 import { formatNumber } from '../utils/format.ts'
+import { OFFLINE_EFFICIENCY } from '../data/config.ts'
+import Modal from './Modal.tsx'
 
 // T4.3 오프라인 수익 환영 팝업. 표시값은 스토어의 offlineGain(UI 상태, 세이브 비포함).
 // offlineGain이 null이면 렌더하지 않는다.
 
-// 경과 ms → "N시간 M분" (초 단위는 팝업 최소 기준이 60초라 분까지만 표시).
+// 경과 ms → "1시간 30분 20초" 형태(분·초 병기, D-2.6). 값이 0이면 "0초".
 function formatDuration(ms: number): string {
-  const totalMinutes = Math.floor(ms / 60_000)
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  if (hours > 0) return `${hours}시간 ${minutes}분`
-  return `${minutes}분`
+  const totalSec = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSec / 3600)
+  const minutes = Math.floor((totalSec % 3600) / 60)
+  const seconds = totalSec % 60
+  const parts: string[] = []
+  if (hours > 0) parts.push(`${hours}시간`)
+  if (minutes > 0) parts.push(`${minutes}분`)
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}초`)
+  return parts.join(' ')
 }
+
+// 효율 퍼센트는 config에서 파생(하드코딩 제거, D-2.6).
+const EFFICIENCY_PERCENT = Math.round(OFFLINE_EFFICIENCY * 100)
 
 export default function OfflineModal() {
   const gain = useGameStore((s) => s.offlineGain)
@@ -19,21 +28,31 @@ export default function OfflineModal() {
 
   if (!gain) return null
 
+  // 캡이 적용됐는지: 실제 자리 비운 시간이 정산 인정 시간보다 크면 캡이 걸린 것.
+  const capped = gain.elapsedMs > gain.cappedMs
+
   return (
-    <div className="modal-backdrop" onClick={dismiss}>
-      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <h2 className="modal-title">돌아온 걸 환영해요! 🧪</h2>
-        <p className="modal-body">
-          자리 비운 동안 <strong className="offline-amount">+{formatNumber(Math.floor(gain.amount))}</strong> 마나를
-          벌었어요.
+    <Modal title="돌아온 걸 환영해요! 🧪" onClose={dismiss}>
+      <p className="modal-body">
+        자리 비운 동안{' '}
+        <strong className="offline-amount">+{formatNumber(Math.floor(gain.amount))}</strong> 마나를
+        벌었어요.
+      </p>
+      {capped ? (
+        <p className="modal-sub">
+          {formatDuration(gain.elapsedMs)} 자리 비움 → 최대 {formatDuration(gain.cappedMs)} 정산 · 효율{' '}
+          {EFFICIENCY_PERCENT}%
         </p>
-        <p className="modal-sub">({formatDuration(gain.elapsedMs)} 자리 비움 · 효율 50%)</p>
-        <div className="modal-actions">
-          <button type="button" className="modal-button modal-button--primary" onClick={dismiss}>
-            확인
-          </button>
-        </div>
+      ) : (
+        <p className="modal-sub">
+          {formatDuration(gain.elapsedMs)} 자리 비움 · 효율 {EFFICIENCY_PERCENT}%
+        </p>
+      )}
+      <div className="modal-actions">
+        <button type="button" className="modal-button modal-button--primary" onClick={dismiss}>
+          확인
+        </button>
       </div>
-    </div>
+    </Modal>
   )
 }
