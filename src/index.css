@@ -290,15 +290,18 @@ a,
   font-size: 64px;
 }
 
-/* T1.2 클릭 숫자 팝: 클릭 좌표에서 위로 떠오르며 페이드아웃(약 0.8s). */
+/* T1.2 클릭 숫자 팝: 클릭 좌표에서 위로 떠오르며 페이드아웃(약 0.8s).
+   D-4.2: 어두운 솥 위 대비 확보 — 밝은 민트/흰색 + 진한 외곽선(text-shadow 확장).
+   폰트 크기(연타 가중)는 인라인 style로, 좌우 기울기는 --tilt 변수로 주입한다(기본 0deg). */
 .click-pop {
   position: absolute;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) rotate(var(--tilt, 0deg));
   pointer-events: none;
   font-size: 22px;
-  font-weight: 700;
-  color: var(--accent);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  font-weight: 800;
+  color: #eafff8;
+  text-shadow: 0 0 3px #10202a, 0 0 6px #10202a, 0 2px 4px rgba(0, 0, 0, 0.75),
+    0 0 12px rgba(120, 255, 214, 0.5);
   animation: click-pop-rise 0.8s ease-out forwards;
   will-change: transform, opacity;
 }
@@ -306,11 +309,11 @@ a,
 @keyframes click-pop-rise {
   from {
     opacity: 1;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%) rotate(var(--tilt, 0deg));
   }
   to {
     opacity: 0;
-    transform: translate(-50%, calc(-50% - 60px));
+    transform: translate(-50%, calc(-50% - 60px)) rotate(var(--tilt, 0deg));
   }
 }
 
@@ -797,10 +800,12 @@ a,
   z-index: 190;
 }
 
+/* D-4.5 버스트 원점을 화면 중앙 → 토스트 스택 위치(우하단)로 이동.
+   무엇을 축하하는지(업적/유성 토스트) 시각적으로 연결한다. */
 .burst-origin {
   position: absolute;
-  left: 50%;
-  top: 45%;
+  right: 60px;
+  bottom: 80px;
 }
 
 .burst-particle {
@@ -1207,4 +1212,389 @@ a,
 
 .modal-confirm-warn {
   margin: 8px 0 0;
+}
+
+/* ============================================================
+   D-4 주스 패스 — 연출(전부 CSS, 라이브러리 없음).
+   원칙: prefers-reduced-motion 시 무한/이동 애니메이션 비활성(맨 아래 블록).
+   ============================================================ */
+
+/* D-4.1 방치 앰비언트 — 솥 이모지 둥실 + 솥 글로우 브리딩 + 배경 기포.
+   유휴 화면에서도 document.getAnimations()가 0이 아니게 하는 상시 루프들. */
+
+/* 솥 이모지 둥실(translateY ±4px + 미세 rotate). */
+.cauldron-emoji {
+  animation: cauldron-float 3s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes cauldron-float {
+  0%,
+  100% {
+    transform: translateY(-3px) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(4px) rotate(2deg);
+  }
+}
+
+/* 솥 버튼 테두리 글로우 브리딩(4s). 클릭 shake와 함께 돌 수 있게 shake 클래스에서 둘 다 지정. */
+.cauldron-button {
+  animation: cauldron-glow 4s ease-in-out infinite;
+}
+
+@keyframes cauldron-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(169, 112, 255, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(169, 112, 255, 0.55);
+  }
+}
+
+/* D-4.2 10연타마다 솥 shake 1회(0.3s) — 글로우 루프와 동시 실행. */
+.cauldron-button.shake {
+  animation: cauldron-shake 0.3s ease-in-out, cauldron-glow 4s ease-in-out infinite;
+}
+
+@keyframes cauldron-shake {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0);
+  }
+  20% {
+    transform: translateX(-6px) rotate(-2deg);
+  }
+  40% {
+    transform: translateX(6px) rotate(2deg);
+  }
+  60% {
+    transform: translateX(-4px) rotate(-1deg);
+  }
+  80% {
+    transform: translateX(4px) rotate(1deg);
+  }
+}
+
+/* 배경 기포 — clicker-panel 뒤에서 아래→위로 은은히 떠오른다(무한 루프).
+   랜덤성은 JS 타이머가 아니라 nth-child별 duration/delay/left/크기 변주로만 준다. */
+.clicker-panel {
+  position: relative;
+}
+
+.ambient-bubbles {
+  position: absolute;
+  inset: -20px 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 버튼·라벨은 기포 위로. */
+.cauldron-button,
+.click-power-label {
+  position: relative;
+  z-index: 1;
+}
+
+.ambient-bubble {
+  position: absolute;
+  bottom: -24px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(210, 190, 255, 0.55), rgba(169, 112, 255, 0.12));
+  animation: ambient-rise linear infinite;
+  will-change: transform, opacity;
+}
+
+.ambient-bubble:nth-child(1) {
+  left: 12%;
+  animation-duration: 7s;
+  animation-delay: 0s;
+}
+.ambient-bubble:nth-child(2) {
+  left: 32%;
+  width: 8px;
+  height: 8px;
+  animation-duration: 9s;
+  animation-delay: 1.5s;
+}
+.ambient-bubble:nth-child(3) {
+  left: 54%;
+  width: 16px;
+  height: 16px;
+  animation-duration: 6s;
+  animation-delay: 3s;
+}
+.ambient-bubble:nth-child(4) {
+  left: 72%;
+  width: 10px;
+  height: 10px;
+  animation-duration: 8s;
+  animation-delay: 0.8s;
+}
+.ambient-bubble:nth-child(5) {
+  left: 88%;
+  width: 7px;
+  height: 7px;
+  animation-duration: 10s;
+  animation-delay: 2.3s;
+}
+
+@keyframes ambient-rise {
+  0% {
+    transform: translateY(0) scale(0.8);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.8;
+  }
+  85% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-260px) scale(1.1);
+    opacity: 0;
+  }
+}
+
+/* D-4.3 구매 피드백 — 행 배경 플래시(0.3s) + 보유수 scale bounce. */
+.generator-row.buy-flash {
+  animation: row-flash 0.3s ease-out;
+}
+
+@keyframes row-flash {
+  0% {
+    background: rgba(126, 224, 161, 0.35);
+    border-color: #7ee0a1;
+  }
+  100% {
+    background: var(--bg);
+  }
+}
+
+.generator-owned.bump {
+  display: inline-block;
+  animation: owned-bump 0.3s ease-out;
+}
+
+@keyframes owned-bump {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.5);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* D-4.3 헤더 마나 감소 시 짧은 빨간 틴트(0.2s). */
+.header-mana.mana-drop {
+  animation: mana-drop 0.2s ease-out;
+}
+
+@keyframes mana-drop {
+  0% {
+    color: #ff7b7b;
+  }
+  100% {
+    color: var(--accent);
+  }
+}
+
+/* D-4.6 유성 버프 배지 — 헤더 MPS 옆. */
+.meteor-badge {
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffd76a;
+  padding: 2px 8px;
+  border: 1px solid #ffd76a;
+  border-radius: 999px;
+  background: rgba(255, 215, 106, 0.12);
+  animation: badge-pulse 1s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+@keyframes badge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 4px rgba(255, 215, 106, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(255, 215, 106, 0.7);
+  }
+}
+
+/* D-4.6 유성 ☄️ — 좌→우 포물선(12s). 클릭 가능한 버튼. */
+.meteor {
+  position: fixed;
+  left: 0;
+  top: 30%;
+  z-index: 150;
+  padding: 6px;
+  font-size: 42px;
+  line-height: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  filter: drop-shadow(0 0 10px rgba(255, 220, 140, 0.8));
+  animation: meteor-fly 12s linear forwards;
+  will-change: transform;
+}
+
+@keyframes meteor-fly {
+  0% {
+    transform: translate(-80px, 0) rotate(15deg);
+  }
+  50% {
+    transform: translate(50vw, -40px) rotate(15deg);
+  }
+  100% {
+    transform: translate(calc(100vw + 80px), 30px) rotate(15deg);
+  }
+}
+
+/* D-4.4 각성 시퀀스(~1.5s) — 골드 radial 플래시 → ✨ 파티클이 헤더 방향(우상단)으로 → 페이드아웃.
+   시퀀스 중 입력 차단(오버레이 pointer-events). 완료 후 컴포넌트가 DOM에서 제거한다. */
+.prestige-sequence {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+.prestige-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 45%, rgba(255, 216, 128, 0.85), rgba(255, 180, 72, 0) 60%);
+  animation: prestige-flash 1.5s ease-in-out forwards;
+}
+
+@keyframes prestige-flash {
+  0% {
+    opacity: 0;
+  }
+  27% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.prestige-spark-origin {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+}
+
+.prestige-spark {
+  position: absolute;
+  font-size: 28px;
+  opacity: 0;
+  will-change: transform, opacity;
+  /* 0.4s 플래시 후 등장해 0.6s간 우상단(헤더 ✨)으로 날아가 박힌다. */
+  animation: prestige-spark-fly 0.6s ease-in 0.4s forwards;
+}
+
+/* 파티클별 시작 퍼짐(--i: 0~7). 중앙에서 약간 흩어졌다가 공통 도착점(우상단)으로 모인다. */
+.prestige-spark:nth-child(1) {
+  --sx: -60px;
+  --sy: -20px;
+}
+.prestige-spark:nth-child(2) {
+  --sx: 40px;
+  --sy: 30px;
+}
+.prestige-spark:nth-child(3) {
+  --sx: -30px;
+  --sy: 40px;
+}
+.prestige-spark:nth-child(4) {
+  --sx: 55px;
+  --sy: -35px;
+}
+.prestige-spark:nth-child(5) {
+  --sx: 10px;
+  --sy: -50px;
+}
+.prestige-spark:nth-child(6) {
+  --sx: -50px;
+  --sy: 15px;
+}
+.prestige-spark:nth-child(7) {
+  --sx: 30px;
+  --sy: 55px;
+}
+.prestige-spark:nth-child(8) {
+  --sx: -10px;
+  --sy: -45px;
+}
+
+@keyframes prestige-spark-fly {
+  0% {
+    opacity: 0;
+    transform: translate(var(--sx, 0), var(--sy, 0)) scale(0.6);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    /* 도착점: 화면 중앙 기준 우상단(헤더 ✨ 근처). */
+    opacity: 0;
+    transform: translate(44vw, -40vh) scale(0.9);
+  }
+}
+
+/* 토스트 스택: 모바일에서 하단 구매 버튼과 겹치지 않게 여백을 키운다(D-4.5). */
+@media (max-width: 800px) {
+  .achievement-toast-stack {
+    bottom: 84px;
+  }
+}
+
+/* 모션 최소화 선호 시 D-4 연출 비활성(기존 접근성 패턴 유지). */
+@media (prefers-reduced-motion: reduce) {
+  .cauldron-emoji,
+  .cauldron-button,
+  .cauldron-button.shake,
+  .ambient-bubble,
+  .generator-row.buy-flash,
+  .generator-owned.bump,
+  .header-mana.mana-drop,
+  .meteor-badge {
+    animation: none;
+  }
+
+  /* 각성 시퀀스: 파티클 이동 없이 표시하지 않는다(각성은 즉시 반영되므로 입력 차단도 불필요). */
+  .prestige-sequence {
+    display: none;
+  }
+
+  /* 유성: 좌→우 이동 대신 중앙 상단에 단순 페이드로 표시(클릭 기회는 보존 — 12초 체류). */
+  .meteor {
+    left: 50%;
+    top: 18%;
+    transform: translateX(-50%);
+    animation: meteor-fade 12s ease-in-out forwards;
+  }
+
+  @keyframes meteor-fade {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    8%,
+    92% {
+      opacity: 1;
+    }
+  }
 }

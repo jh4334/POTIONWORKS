@@ -16,6 +16,8 @@ interface Cheats {
   // 시간 시뮬: lastTick 기준 hours시간 뒤 시각으로 tick 호출.
   //   탭 방치와 동일 경로(경과시간 × MPS 적립) — 마나가 대략 MPS × hours × 3600 만큼 늘어난다.
   simulate: (hours: number) => void
+  // 유성 버프 즉시 발동(D-4.6 검증용) — 실제 유성 클릭과 동일 경로(activateMeteorBuff).
+  meteor: () => void
   // 하드리셋(세이브 삭제 + 초기 상태).
   reset: () => void
 }
@@ -33,6 +35,10 @@ const cheats: Cheats = {
     // 진실은 타임스탬프: lastTick 대비 경과시간만큼만 적립되므로 미래 시각을 넘긴다.
     s.tick(s.lastTick + hours * 3600_000)
   },
+  meteor() {
+    // 유성 클릭과 동일: 버프 발동 + 토스트 + 버스트. 만료는 tick이 판정한다.
+    useGameStore.getState().activateMeteorBuff(Date.now())
+  },
   reset() {
     // 하드리셋 표준 경로(자동저장 정지 → clearSave → reload). 경합으로 세이브가 되살아나지 않게 한다.
     hardResetAndReload()
@@ -47,5 +53,5 @@ declare global {
 
 window.cheats = cheats
 console.info(
-  '[cheats] window.cheats 활성화 — addMana(n) · x1000() · simulate(hours) · reset()',
+  '[cheats] window.cheats 활성화 — addMana(n) · x1000() · simulate(hours) · meteor() · reset()',
 )

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { formatNumber } from '../utils/format.ts'
 import { saveNow } from '../engine/autosave.ts'
@@ -15,11 +15,50 @@ function formatClock(ms: number): string {
   return new Date(ms).toLocaleTimeString()
 }
 
+// D-4.3 마나 표시 — 구매 등으로 값이 줄면 짧은 빨간 틴트(0.2s)로 위화감을 완화한다.
+// 감소 판정을 위해 정수 마나(number)를 구독하므로 이 span만 tick마다 갱신된다(헤더 전체 아님).
+function HeaderMana() {
+  const mana = useGameStore((s) => Math.floor(s.mana))
+  const prev = useRef(mana)
+  const [dropping, setDropping] = useState(false)
+  useEffect(() => {
+    if (mana < prev.current) setDropping(true)
+    prev.current = mana
+  }, [mana])
+  return (
+    <span
+      className={`header-mana${dropping ? ' mana-drop' : ''}`}
+      onAnimationEnd={() => setDropping(false)}
+    >
+      {formatNumber(mana)} 마나
+    </span>
+  )
+}
+
+// D-4.6 유성 버프 배지 — 버프 중 MPS 옆에 "×N (남은 M초)" 표시. 남은 시간은 tick 구독이 아니라
+// 1s 로컬 인터벌로 갱신(표시 전용). activeBuff는 발동/만료 시에만 참조가 바뀌므로 구독이 가볍다.
+function MeteorBadge() {
+  const activeBuff = useGameStore((s) => s.activeBuff)
+  const [remaining, setRemaining] = useState(0)
+  useEffect(() => {
+    if (!activeBuff) return
+    const update = () =>
+      setRemaining(Math.max(0, Math.ceil((activeBuff.endsAt - Date.now()) / 1000)))
+    update()
+    const iv = setInterval(update, 1000)
+    return () => clearInterval(iv)
+  }, [activeBuff])
+  if (!activeBuff || remaining <= 0) return null
+  return (
+    <span className="meteor-badge" title="유성 버프 — 생산 폭주 중">
+      ×{activeBuff.mult} (남은 {remaining}초)
+    </span>
+  )
+}
+
 export default function Header() {
-  // 표시 문자열을 구독한다 — mana는 100ms마다 소수점이 변하지만 정수 내림 후 포맷한 문자열은
-  // 훨씬 드물게 바뀌므로, 문자열이 같으면 리렌더가 발생하지 않는다.
-  const manaText = useGameStore((s) => formatNumber(Math.floor(s.mana)))
-  // mps는 구매 시에만 변하지만 일관성을 위해 동일하게 표시 문자열을 구독한다.
+  // 마나 표시는 HeaderMana 서브컴포넌트가 담당한다(감소 틴트를 위해 숫자 구독 — 헤더 전체 리렌더 회피).
+  // mps는 구매·버프 시에만 변하지만 일관성을 위해 표시 문자열을 구독한다(버프 중엔 ×N 값이 반영됨).
   const mpsText = useGameStore((s) => formatNumber(s.manaPerSecond))
   const stardust = useGameStore((s) => s.stardust)
   // 각성 가능 여부(누적 마나 임계 도달). 스타더스트 표시 노출 조건에 사용.
@@ -44,9 +83,9 @@ export default function Header() {
     <header className="header">
       <h1 className="header-title">🧪 POTIONWORKS</h1>
       <div className="header-stats">
-        {/* 마나는 100ms마다 갱신되므로 표시는 정수 내림(소수점 깜빡임 방지) — 셀렉터에서 이미 포맷됨. */}
-        <span className="header-mana">{manaText} 마나</span>
+        <HeaderMana />
         <span className="header-mps">초당 {mpsText}</span>
+        <MeteorBadge />
         {showStardust && (
           <button
             type="button"

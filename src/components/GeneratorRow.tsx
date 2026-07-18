@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useGameStore } from '../store/gameStore.ts'
 import { GENERATORS, type GeneratorDef } from '../data/generators.ts'
@@ -61,6 +61,11 @@ function GeneratorRow({ def, revealed }: Props) {
   )
   const buyGenerator = useGameStore((s) => s.buyGenerator)
 
+  // D-4.3 구매 피드백(행 로컬 상태): 성공 시 행 배경 플래시 + 보유수 scale bounce.
+  // flashing은 애니메이션 종료 시 해제하고, bumpKey는 span을 remount해 매 구매마다 확실히 재생한다.
+  const [flashing, setFlashing] = useState(false)
+  const [bumpKey, setBumpKey] = useState(0)
+
   // 실루엣: 다음-다음 티어 미리보기. 이름/생산 숨기고 비용만.
   if (!revealed) {
     return (
@@ -83,15 +88,26 @@ function GeneratorRow({ def, revealed }: Props) {
     if (!canAfford) return // aria-disabled 상태에서도 클릭이 새지 않게 방어.
     buyGenerator(def.id, count)
     playDing() // 구매 성공음. muted면 sound가 무시.
+    setFlashing(true)
+    setBumpKey((k) => k + 1)
   }
 
   return (
-    <div className={`generator-row${canAfford ? ' can-afford' : ''}`}>
+    <div
+      className={`generator-row${canAfford ? ' can-afford' : ''}${flashing ? ' buy-flash' : ''}`}
+      onAnimationEnd={(e) => {
+        // 자식(보유수 bounce) 애니메이션이 버블링돼도 행 플래시 종료만 처리.
+        if (e.animationName === 'row-flash') setFlashing(false)
+      }}
+    >
       <span className="generator-icon">{def.icon}</span>
       <div className="generator-body">
         <div className="generator-name">
           {def.name}
-          <span className="generator-owned">{owned}</span>
+          {/* bumpKey remount로 매 구매마다 scale bounce 재생. 초기(0)엔 애니메이션 없음. */}
+          <span key={bumpKey} className={`generator-owned${bumpKey > 0 ? ' bump' : ''}`}>
+            {owned}
+          </span>
         </div>
         <div className="generator-sub">개당 {formatNumber(perUnit)}/s</div>
         {owned > 0 && (

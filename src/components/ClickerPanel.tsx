@@ -1,15 +1,31 @@
-import { useCallback, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import {
+  useCallback,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { formatNumber } from '../utils/format.ts'
 import { playClick } from '../engine/sound.ts'
+import AmbientBubbles from './AmbientBubbles.tsx'
 
 // T1.2 클릭 숫자 팝: 순수 UI 이펙트라 게임 상태(store)가 아니라 로컬 상태로 관리한다.
+// D-4.2 연타 가중: 최근 1초 내 클릭 수(combo)에 따라 폰트 22→최대 32px, ±10° 랜덤 기울기.
 interface Pop {
   id: number
   x: number
   y: number
   label: string
+  fontSize: number
+  tilt: number // deg
 }
+
+const COMBO_WINDOW_MS = 1000 // 연타 판정 창(최근 이 시간 내 클릭 수를 combo로 센다)
+const POP_FONT_MIN = 22
+const POP_FONT_MAX = 32
+const SHAKE_EVERY = 10 // 이 연타 배수마다 솥 shake 1회
 
 export default function ClickerPanel() {
   // 셀렉터로 부분 구독 — 액션과 clickPower만 가져온다(스토어 통째 구독 금지).
@@ -18,14 +34,33 @@ export default function ClickerPanel() {
 
   const [pops, setPops] = useState<Pop[]>([])
   const nextId = useRef(0)
+  // 최근 클릭 타임스탬프(연타 combo 계산용, UI 전용 ref). performance.now() 기준.
+  const clickTimes = useRef<number[]>([])
+  // 솥 shake 트리거(10연타마다). 애니메이션 종료 시 해제 — DOM/클래스가 남지 않게.
+  const [shaking, setShaking] = useState(false)
 
   // 좌표(버튼 기준)에서 클릭 처리 + 팝 생성. 마우스/키보드 공용.
   const spawnClick = useCallback(
     (x: number, y: number) => {
       click()
       playClick() // 짧은 pop(사용자 제스처라 AudioContext resume 허용). muted면 sound가 무시.
-      const pop: Pop = { id: nextId.current++, x, y, label: `+${formatNumber(clickPower)}` }
+
+      // 연타 combo: 최근 1초 내 클릭 수. 오래된 타임스탬프는 버린다.
+      const now = performance.now()
+      const times = clickTimes.current.filter((t) => now - t < COMBO_WINDOW_MS)
+      times.push(now)
+      clickTimes.current = times
+      const combo = times.length
+
+      // combo 1 → 22px, combo 11+ → 32px. 좌우 ±10° 랜덤 기울기.
+      const fontSize = Math.min(POP_FONT_MAX, POP_FONT_MIN + Math.min(combo - 1, POP_FONT_MAX - POP_FONT_MIN))
+      const tilt = (Math.random() * 2 - 1) * 10
+
+      const pop: Pop = { id: nextId.current++, x, y, label: `+${formatNumber(clickPower)}`, fontSize, tilt }
       setPops((prev) => [...prev, pop])
+
+      // 10연타마다 솥 shake 1회(이미 흔들리는 중이면 유지).
+      if (combo > 0 && combo % SHAKE_EVERY === 0) setShaking(true)
     },
     [click, clickPower],
   )
@@ -57,12 +92,17 @@ export default function ClickerPanel() {
 
   return (
     <div className="clicker-panel">
+      <AmbientBubbles />
       <button
         type="button"
-        className="cauldron-button"
+        className={`cauldron-button${shaking ? ' shake' : ''}`}
         aria-label="솥 클릭"
         onClick={handleClick}
         onKeyDown={handleKeyDown}
+        onAnimationEnd={(e) => {
+          // 자식 팝 애니메이션이 버블링돼도 shake 종료만 처리(오탐 방지).
+          if (e.animationName === 'cauldron-shake') setShaking(false)
+        }}
       >
         <span className="cauldron-emoji">🫧</span>
         <span className="cauldron-label">솥을 저어라</span>
@@ -70,8 +110,13 @@ export default function ClickerPanel() {
           <span
             key={pop.id}
             className="click-pop"
-            style={{ left: pop.x, top: pop.y }}
-            onAnimationEnd={() => removePop(pop.id)}
+            style={
+              { left: pop.x, top: pop.y, fontSize: pop.fontSize, '--tilt': `${pop.tilt}deg` } as CSSProperties
+            }
+            onAnimationEnd={(e) => {
+              // shake와 팝은 같은 요소가 아니지만, 안전하게 자기 애니메이션만 처리.
+              if (e.animationName.startsWith('click-pop')) removePop(pop.id)
+            }}
           >
             {pop.label}
           </span>

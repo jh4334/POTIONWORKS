@@ -5,6 +5,8 @@ import {
   ACHIEVEMENT_CHECK_INTERVAL_MS,
   MAX_TICK_CATCHUP_MS,
   TICK_REANCHOR_TOLERANCE_MS,
+  METEOR_BUFF_MULT,
+  METEOR_BUFF_DURATION_MS,
 } from '../data/config.ts'
 import { offlineEarnings } from '../engine/offline.ts'
 import { GENERATORS } from '../data/generators.ts'
@@ -40,10 +42,22 @@ export interface OfflineGain {
   cappedMs: number // 실제 정산에 인정된 시간(min(elapsedMs, 캡)). 캡 적용 여부 표기용(D-2.6).
 }
 
-// 업적 달성 토스트(T6.1). 세이브 비포함 UI 상태. id는 렌더 key + 개별 소멸용.
+// 알림 토스트(T6.1). 세이브 비포함 UI 상태. id는 렌더 key + 개별 소멸용.
+// 기본은 업적 달성 토스트(name만 있으면 "업적 달성: name" / "+1% 생산"으로 렌더).
+// icon/title/sub가 있으면 그 값으로 렌더한다 — 유성 버프 등 비업적 알림에 큐를 재사용한다(D-4.6).
 export interface AchievementToast {
   id: number
   name: string
+  icon?: string
+  title?: string
+  sub?: string
+}
+
+// 활성 버프(D-4.6 유성). MPS에 영향을 주는 런타임 상태 — UI 상태가 아니다.
+// 세이브 비포함: 로드 시 소멸(단순 유지). 만료 판정은 tick에서(now >= endsAt), 타이머 신뢰 금지 원칙.
+export interface ActiveBuff {
+  mult: number
+  endsAt: number // epoch ms — 이 시각 이후 첫 tick에서 해제된다.
 }
 
 export interface GameState {
@@ -95,6 +109,9 @@ export interface GameState {
   burstKey: number
   // 업적 체크 스로틀용 마지막 검사 시각(세이브 비포함). tick에서 1초에 1번만 검사하기 위한 상태.
   lastAchievementCheckAt: number
+  // 활성 버프(D-4.6 유성). null이면 버프 없음. recalcDerived에서 manaPerSecond에 mult를 곱한다.
+  // 세이브 비포함 — 파생값(MPS)은 저장하지 않으므로 버프가 세이브를 오염시키지 않는다.
+  activeBuff: ActiveBuff | null
   // 솥 클릭: 마나를 clickPower만큼 증가(누적 마나도 함께).
   click: () => void
   // 시설 구매: 비용 확인 후 마나 차감 + 보유 증가 + 파생값 재계산.
@@ -129,6 +146,9 @@ export interface GameState {
   //   totalPrestiges += 1, 그리고 마나/시설/업그레이드/buyAmount/lifetimeMana 초기화.
   //   유지: stardust, totalPrestiges, 업적·통계. 리셋 후 파생값(MPS·clickPower) 재계산.
   prestige: () => void
+  // 유성 버프 발동(D-4.6): activeBuff 설정 + recalcDerived(버프 반영) + 획득 토스트/버스트.
+  //   now는 Date.now(). 만료는 tick이 판정한다(타이머 신뢰 금지).
+  activateMeteorBuff: (now: number) => void
   // 업적 토스트 소멸(자동 3초 타이머가 호출).
   dismissToast: (id: number) => void
   // 음소거 토글(T6.2). 세이브 대상 값이라 액션에서 변형한다.
@@ -183,13 +203,16 @@ function createInitialState() {
     toasts: [] as AchievementToast[],
     burstKey: 0,
     lastAchievementCheckAt: 0,
+    activeBuff: null as ActiveBuff | null,
   }
 }
 
 // 파생값(MPS·clickPower) 일괄 재계산. buyGenerator/buyUpgrade/prestige/loadSave 공통.
 // clickPower는 MPS에 의존하므로 항상 함께 계산해 캐시를 일관되게 유지한다.
 // (MPS·clickPower 모두 generators/upgrades/stardust/상점/업적수 변경 시에만 바뀌고 tick에서는 불변.)
-// MPS에는 스타더스트 배율 × 업적 배율을 합성해 한 번만 곱한다(합산 후 전체 배율).
+// MPS에는 스타더스트 배율 × 업적 배율 × 유성 버프 배율을 합성해 한 번만 곱한다(합산 후 전체 배율).
+// buffMult(D-4.6)는 활성 유성 버프면 >1, 아니면 1 — globalMult에 합성돼 MPS·개당 실효값·클릭까지
+// 일관되게 반영된다(헤더 MPS·시설 행 표시가 전부 같은 배율을 쓰므로 백분율 합이 100%로 유지됨).
 // clickPower에는 상점 '공명 증폭'의 clickMps 퍼센트를 업그레이드 퍼센트와 합산해 반영한다(D-3.1).
 function recalcDerived(
   generators: Record<string, number>,
@@ -198,9 +221,11 @@ function recalcDerived(
   stardust: number,
   achievementCount: number,
   stardustUpgrades: Record<string, number>,
+  buffMult: number = 1,
 ): { manaPerSecond: number; clickPower: number; globalMult: number } {
   const ups = resolveUpgrades(upgradeIds)
-  const globalMult = stardustMultiplier(stardust) * achievementMultiplier(achievementCount)
+  const globalMult =
+    stardustMultiplier(stardust) * achievementMultiplier(achievementCount) * buffMult
   const manaPerSecond = totalMps(generators, GENERATORS, ups, globalMult)
   const clickPower = computeClickPower(
     basePower,
@@ -209,6 +234,12 @@ function recalcDerived(
     stardustClickPercent(stardustUpgrades),
   )
   return { manaPerSecond, clickPower, globalMult }
+}
+
+// 활성 버프의 MPS 배율(없으면 1). recalcDerived의 buffMult 인자로 넘긴다(D-4.6).
+// 만료는 tick이 activeBuff를 null로 지워 처리하므로 여기선 시각 비교를 하지 않는다(존재=적용).
+function buffMultOf(activeBuff: ActiveBuff | null): number {
+  return activeBuff ? activeBuff.mult : 1
 }
 
 // 토스트 id 카운터(UI 전용, 세이브 비포함). 모듈 스코프면 충분하다.
@@ -244,7 +275,8 @@ function withAchievements<T extends Partial<GameState>>(
     toasts,
     burstKey: next.burstKey + 1, // 마일스톤 파티클 버스트 트리거(T6.2)
     // 업적수가 늘었으므로 생산 배율 재계산 — 늘어난 mps로 다음 tick/액션에서 연쇄 달성이 이어질 수 있다.
-    ...recalcDerived(next.generators, next.upgrades, next.basePower, next.stardust, achievements.length, next.stardustUpgrades),
+    // 유성 버프(next.activeBuff)도 반영해 재계산 — 버프 중 업적 달성이 버프를 지우지 않게 한다.
+    ...recalcDerived(next.generators, next.upgrades, next.basePower, next.stardust, achievements.length, next.stardustUpgrades, buffMultOf(next.activeBuff)),
   }
 }
 
@@ -275,7 +307,7 @@ export const useGameStore = create<GameState>()((set) => ({
       return withAchievements(s, {
         mana: s.mana - cost,
         generators,
-        ...recalcDerived(generators, s.upgrades, s.basePower, s.stardust, s.achievements.length, s.stardustUpgrades),
+        ...recalcDerived(generators, s.upgrades, s.basePower, s.stardust, s.achievements.length, s.stardustUpgrades, buffMultOf(s.activeBuff)),
       })
     }),
 
@@ -291,7 +323,7 @@ export const useGameStore = create<GameState>()((set) => ({
       return withAchievements(s, {
         mana: s.mana - def.cost,
         upgrades,
-        ...recalcDerived(s.generators, upgrades, s.basePower, s.stardust, s.achievements.length, s.stardustUpgrades),
+        ...recalcDerived(s.generators, upgrades, s.basePower, s.stardust, s.achievements.length, s.stardustUpgrades, buffMultOf(s.activeBuff)),
       })
     }),
 
@@ -318,6 +350,7 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust,
           s.achievements.length,
           stardustUpgrades,
+          buffMultOf(s.activeBuff),
         ),
       }
     }),
@@ -334,24 +367,52 @@ export const useGameStore = create<GameState>()((set) => ({
       // catch-up 캡: 캡 이내분은 100% 지급, 초과분은 오프라인 공식으로 라우팅한다.
       // 오프라인 효율·캡은 스타더스트 상점 강화를 반영한 실효값을 쓴다(D-3.1).
       // (순수 계산 offlineEarnings는 그대로 쓰고, 100%/오프라인 조합만 여기 액션에서 한다.)
+      //
+      // 유성 버프(D-4.6): manaPerSecond는 버프 배율이 이미 곱해진 값이므로, catch-up/오프라인 공식은
+      // 버프를 뺀 baseMps로 전 구간을 계산하고, 버프 보너스는 "이 tick 구간이 버프 창[start,end]과
+      // 실제로 겹친 시간"만큼만 100%로 더한다. 이렇게 하면 탭을 백그라운드에 두고 복귀해도(큰 elapsed)
+      // 버프가 30초 규칙을 넘겨 과지급되지 않는다(만료 판정은 아래 tick에서, 정산은 겹친 구간만).
       const mps = s.manaPerSecond
-      const gained =
+      const buff = s.activeBuff
+      const buffMult = buff ? buff.mult : 1
+      const baseMps = mps / buffMult
+      const baseGained =
         elapsedMs <= MAX_TICK_CATCHUP_MS
-          ? mps * (elapsedMs / 1000)
-          : mps * (MAX_TICK_CATCHUP_MS / 1000) +
+          ? baseMps * (elapsedMs / 1000)
+          : baseMps * (MAX_TICK_CATCHUP_MS / 1000) +
             offlineEarnings(
               elapsedMs - MAX_TICK_CATCHUP_MS,
-              mps,
+              baseMps,
               effectiveOfflineEfficiency(s.stardustUpgrades),
               effectiveOfflineCapMs(s.stardustUpgrades),
             )
-      const partial = {
+      // 버프 창과 [lastTick, now] 구간의 겹침(ms). 버프 없으면 0.
+      const buffedMs = buff
+        ? Math.max(
+            0,
+            Math.min(buff.endsAt, now) -
+              Math.max(buff.endsAt - METEOR_BUFF_DURATION_MS, s.lastTick),
+          )
+        : 0
+      // 겹친 시간만큼 (배율-1)배를 base 생산에 얹는다(버프 창은 짧아 캡 무관, 100%).
+      const gained = baseGained + baseMps * (buffMult - 1) * (buffedMs / 1000)
+      let partial: Partial<GameState> = {
         mana: s.mana + gained,
         lifetimeMana: s.lifetimeMana + gained, // 생산 획득도 누적 마나에 반영
         totalLifetimeMana: s.totalLifetimeMana + gained, // 전생 포함 총 누적(각성해도 유지)
         lastTick: now,
         // 플레이 시간은 실제 경과를 그대로 누적한다(오프라인 캡·효율과 무관 — 통계 표시 전용).
         playtimeMs: s.playtimeMs + elapsedMs,
+      }
+      // 유성 버프 만료 판정은 tick에서(now >= endsAt) — 타이머 신뢰 금지 원칙. 백그라운드 복귀 후에도
+      // 첫 tick이 정확히 판정한다. 해제 시 파생값을 buffMult=1로 재계산해 이후 생산이 원복된다.
+      // (이 tick의 gained는 만료 직전 버프값(s.manaPerSecond)으로 계산 — 오버슈트는 한 tick 미만, 단순 유지.)
+      if (s.activeBuff && now >= s.activeBuff.endsAt) {
+        partial = {
+          ...partial,
+          activeBuff: null,
+          ...recalcDerived(s.generators, s.upgrades, s.basePower, s.stardust, s.achievements.length, s.stardustUpgrades, 1),
+        }
       }
       if (now - s.lastAchievementCheckAt < ACHIEVEMENT_CHECK_INTERVAL_MS) return partial
       return { ...withAchievements(s, partial), lastAchievementCheckAt: now }
@@ -388,7 +449,7 @@ export const useGameStore = create<GameState>()((set) => ({
         // 로드 시 토스트는 띄우지 않는다(이미 달성한 것). 스로틀 시각도 초기화.
         toasts: s.toasts,
         lastAchievementCheckAt: 0,
-        ...recalcDerived(generators, upgrades, st.basePower, st.stardust, achievements.length, stardustUpgrades),
+        ...recalcDerived(generators, upgrades, st.basePower, st.stardust, achievements.length, stardustUpgrades, buffMultOf(s.activeBuff)),
       }
     }),
 
@@ -457,8 +518,41 @@ export const useGameStore = create<GameState>()((set) => ({
         totalPrestiges,
         lastTick: Date.now(),
         burstKey: s.burstKey + 1, // 각성 순간에도 마일스톤 파티클 버스트(T6.2)
-        ...recalcDerived(generators, upgrades, INITIAL_CLICK_POWER, stardust, s.achievements.length, s.stardustUpgrades),
+        ...recalcDerived(generators, upgrades, INITIAL_CLICK_POWER, stardust, s.achievements.length, s.stardustUpgrades, buffMultOf(s.activeBuff)),
       })
+    }),
+
+  // 유성 버프 발동(D-4.6): activeBuff 설정 + 버프 반영 파생값 재계산 + 획득 토스트 + 파티클 버스트.
+  // 만료는 tick이 판정한다(now >= endsAt). 토스트는 기존 큐 재사용(icon/title/sub 지정).
+  activateMeteorBuff: (now) =>
+    set((s) => {
+      const activeBuff: ActiveBuff = {
+        mult: METEOR_BUFF_MULT,
+        endsAt: now + METEOR_BUFF_DURATION_MS,
+      }
+      return {
+        activeBuff,
+        toasts: [
+          ...s.toasts,
+          {
+            id: nextToastId++,
+            name: '',
+            icon: '☄️',
+            title: '마나 폭주!',
+            sub: `${METEOR_BUFF_DURATION_MS / 1000}초간 생산 ×${METEOR_BUFF_MULT}`,
+          },
+        ],
+        burstKey: s.burstKey + 1, // 화려한 획득 이펙트(파티클 버스트) 트리거
+        ...recalcDerived(
+          s.generators,
+          s.upgrades,
+          s.basePower,
+          s.stardust,
+          s.achievements.length,
+          s.stardustUpgrades,
+          activeBuff.mult,
+        ),
+      }
     }),
 
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

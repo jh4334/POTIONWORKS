@@ -58,3 +58,16 @@ export const ACHIEVEMENT_MULT_PER = 0.01
 export const ACHIEVEMENT_CHECK_INTERVAL_MS = 1_000
 // 업적 토스트 자동 소멸 시간(ms).
 export const ACHIEVEMENT_TOAST_MS = 3_000
+// 동시 표시 토스트 최대 개수(D-4.5). 큐(store.toasts)는 그대로 두고 표시만 오래된 것부터 이 수로 제한한다.
+export const TOAST_MAX_VISIBLE = 3
+
+// --- 골든 이벤트 "유성" (D-4.6, DEVELOP §D-4.6) ---
+// 다음 유성 출현까지의 랜덤 대기(ms) 범위. tick과 무관한 로컬 setTimeout으로 예약한다(타이머 신뢰 금지 원칙은
+// 게임 진행/보상 계산에 적용 — 유성 출현은 순수 연출 트리거라 예외적으로 setTimeout 사용).
+export const METEOR_MIN_INTERVAL_MS = 3 * 60_000
+export const METEOR_MAX_INTERVAL_MS = 8 * 60_000
+// 유성이 화면에 체류하는 시간(ms). 이 안에 클릭하지 못하면 그냥 사라진다.
+export const METEOR_LIFETIME_MS = 12_000
+// 유성 클릭 시 버프 배율과 지속시간(ms). 생산(MPS)에 곱해진다.
+export const METEOR_BUFF_MULT = 7
+export const METEOR_BUFF_DURATION_MS = 30_000
