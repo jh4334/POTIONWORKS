@@ -28,6 +28,11 @@ function nextEffectLabel(def: StardustUpgradeDef, level: number): string {
       return `오프라인 효율 ${Math.round((OFFLINE_EFFICIENCY + e.perLevel * next) * 100)}%`
     case 'offlineCap':
       return `오프라인 캡 ${Math.round((OFFLINE_CAP_MS + e.perLevelMs * next) / 3_600_000)}시간`
+    default: {
+      // exhaustive 가드(D-5.1): 새 StardustEffect kind 추가 시 여기서 컴파일 에러가 난다.
+      const _exhaustive: never = e
+      return _exhaustive
+    }
   }
 }
 

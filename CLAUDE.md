@@ -13,6 +13,7 @@ npm run dev / npm run build / npm test (formulas 단위 테스트)
 - 수식은 engine/formulas.ts 순수 함수 + 단위 테스트 유지
 - 세이브에 version 필드 필수. 스키마 변경 시 migrate 함수 갱신
 - 시간 계산의 진실은 타임스탬프. setInterval을 신뢰하지 말 것
+- 신규 데이터 정의 시 표시 문자열 최소화(파생 생성 이름은 파라미터화 고려) — i18n 대비
 
 ## 작업 규칙
 - PLAN.md 태스크 단위로만 작업. 범위 확장 금지

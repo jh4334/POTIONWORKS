@@ -14,6 +14,12 @@ export const SAVE_KEY = 'potionworks-save'
 export const SAVE_CORRUPT_KEY = SAVE_KEY + '-corrupt'
 // 자동저장 주기(ms). DESIGN.md §3: 10초 자동저장. tick 루프와는 별도 인터벌.
 export const AUTOSAVE_INTERVAL_MS = 10_000
+// 기기 식별자 저장 키(D-5.3). 세이브 키와 별개로 영속 — 각성/하드리셋/세이브 교체와 무관하게 이 기기를 식별한다.
+// M9(클라우드 동기) 충돌 해소를 클라이언트 시계가 아니라 기기·단조 카운터로 판정하기 위한 메타.
+export const DEVICE_KEY = 'potionworks-device'
+// 종료성 저장(pagehide/visibilitychange hidden/beforeunload) 디바운스(ms, D-5.4).
+// 탭 닫힘 시 이 세 이벤트가 연달아 발화해도 1초 내 중복 저장을 억제한다(중복 저장 자체는 무해).
+export const SAVE_DEBOUNCE_MS = 1_000
 
 // generators 보유수 상한(세이브 정규화용). Infinity 연쇄로 세이브가 오염되는 것을 차단하는 방어 클램프.
 // 정상 플레이로는 도달 불가능한 큰 값(1e12).

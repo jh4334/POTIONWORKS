@@ -1,19 +1,20 @@
 // 업그레이드 정의 (DESIGN.md §2.4). 규칙(CLAUDE.md): 게임 수치는 전부 data/*.
 // 효과는 데이터 기술식(discriminated union) — 해석은 engine/formulas.ts 순수 함수가 담당한다.
-import { GENERATORS } from './generators.ts'
+import { GENERATORS, type GeneratorId } from './generators.ts'
 
 // 효과: 마일스톤 배율 / 클릭 강화 / 시너지.
+// 시설 참조 필드는 GeneratorId로 좁혀 존재하지 않는 id를 컴파일 단계에서 잡는다(D-5.1).
 export type UpgradeEffect =
   // 해당 티어(generatorId) 생산 ×mult.
-  | { kind: 'generatorMult'; generatorId: string; mult: number }
+  | { kind: 'generatorMult'; generatorId: GeneratorId; mult: number }
   // 클릭 = 기본 클릭 + MPS의 percent%. (여러 개 구매 시 percent 누적 합산.)
   | { kind: 'clickMpsPercent'; percent: number }
   // sourceId 1개당 targetId 생산 +percentPerSource%.
-  | { kind: 'synergy'; sourceId: string; targetId: string; percentPerSource: number }
+  | { kind: 'synergy'; sourceId: GeneratorId; targetId: GeneratorId; percentPerSource: number }
 
 // 해금 조건: 특정 시설 보유수 이상 / 총 MPS 이상.
 export type UnlockCondition =
-  | { kind: 'ownedCount'; generatorId: string; minOwned: number }
+  | { kind: 'ownedCount'; generatorId: GeneratorId; minOwned: number }
   | { kind: 'totalMps'; minMps: number }
 
 export interface UpgradeDef {

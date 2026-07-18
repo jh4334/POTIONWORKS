@@ -19,16 +19,15 @@ import {
   clickPower as computeClickPower,
   isUpgradeUnlocked,
   isAchievementUnlocked,
-  stardustMultiplier,
-  achievementMultiplier,
   stardustClickPercent,
   startingApprentices,
   stardustUpgradeCost,
   effectiveOfflineEfficiency,
   effectiveOfflineCapMs,
   prestigeGain,
+  composeGlobalMult,
 } from '../engine/formulas.ts'
-import { clearSave, type SaveData } from '../engine/save.ts'
+import { clearSave, getDeviceId, type SaveData } from '../engine/save.ts'
 
 // 규칙(CLAUDE.md): 상태 변형은 이 스토어의 액션에서만, 컴포넌트는 selector로 부분 구독.
 
@@ -93,6 +92,11 @@ export interface GameState {
   muted: boolean
   // 플레이 시간 누적(D-2.3, ms). 세이브에 포함(v4). tick에서 실제 경과를 그대로 누적(오프라인 캡 무관).
   playtimeMs: number
+  // M9 충돌 해소 메타(D-5.3, 세이브 v6 포함).
+  // deviceId=이 기기 식별자(localStorage 'potionworks-device'에 영속, 세이브엔 저장 시점 값 기록).
+  // saveCount=저장마다 +1인 단조 카운터. 클라이언트 시계 없이 "어느 기기의 몇 번째 저장인지"로 충돌을 판정한다.
+  deviceId: string
+  saveCount: number
   // 마지막 저장 성공 시각(세이브 비포함 UI 상태, D-2.5). null이면 아직 저장된 적 없음.
   // 수동 저장·자동 저장·각성/복원 저장이 성공하면 갱신 → 헤더 "HH:MM:SS 저장됨" 표시.
   lastSavedAt: number | null
@@ -153,6 +157,8 @@ export interface GameState {
   dismissToast: (id: number) => void
   // 음소거 토글(T6.2). 세이브 대상 값이라 액션에서 변형한다.
   toggleMuted: () => void
+  // 저장 단조 카운터 증가(D-5.3). saveNow가 직렬화 직전 호출해 저장마다 +1을 보장한다(단조 증가).
+  bumpSaveCount: () => void
   // 디버그 전용(debug/cheats.ts): 마나 +n (누적 마나 통계도 함께 증가).
   // ⚠ 프로덕션 코드에서 호출 금지 — 개발/검증용 치트(window.cheats)에서만 사용한다.
   debugAddMana: (n: number) => void
@@ -196,6 +202,9 @@ function createInitialState() {
     totalLifetimeMana: 0,
     muted: false,
     playtimeMs: 0,
+    // deviceId는 이 기기의 영속 식별자(없으면 생성). hardReset해도 기기는 그대로라 동일 값을 다시 읽는다.
+    deviceId: getDeviceId(),
+    saveCount: 0,
     lastSavedAt: null as number | null,
     saveFailed: false,
     offlineGain: null as OfflineGain | null,
@@ -214,24 +223,36 @@ function createInitialState() {
 // buffMult(D-4.6)는 활성 유성 버프면 >1, 아니면 1 — globalMult에 합성돼 MPS·개당 실효값·클릭까지
 // 일관되게 반영된다(헤더 MPS·시설 행 표시가 전부 같은 배율을 쓰므로 백분율 합이 100%로 유지됨).
 // clickPower에는 상점 '공명 증폭'의 clickMps 퍼센트를 업그레이드 퍼센트와 합산해 반영한다(D-3.1).
-function recalcDerived(
-  generators: Record<string, number>,
-  upgradeIds: string[],
-  basePower: number,
-  stardust: number,
-  achievementCount: number,
-  stardustUpgrades: Record<string, number>,
-  buffMult: number = 1,
-): { manaPerSecond: number; clickPower: number; globalMult: number } {
-  const ups = resolveUpgrades(upgradeIds)
-  const globalMult =
-    stardustMultiplier(stardust) * achievementMultiplier(achievementCount) * buffMult
-  const manaPerSecond = totalMps(generators, GENERATORS, ups, globalMult)
+//
+// (D-5.2) 위치 인자 나열 대신 단일 컨텍스트 객체를 받는다 — 호출부(7곳)가 필드명으로 명확해지고,
+// 인자 추가 시 순서 실수를 없앤다. 전체 배율 합성은 formulas.composeGlobalMult로 일원화한다.
+interface RecalcContext {
+  generators: Record<string, number>
+  upgradeIds: string[]
+  basePower: number
+  stardust: number
+  achievementCount: number
+  stardustUpgrades: Record<string, number>
+  buffMult?: number // 활성 유성 버프면 >1, 아니면 1(기본).
+}
+
+function recalcDerived(ctx: RecalcContext): {
+  manaPerSecond: number
+  clickPower: number
+  globalMult: number
+} {
+  const ups = resolveUpgrades(ctx.upgradeIds)
+  const globalMult = composeGlobalMult({
+    stardust: ctx.stardust,
+    achievementCount: ctx.achievementCount,
+    buffMult: ctx.buffMult ?? 1,
+  })
+  const manaPerSecond = totalMps(ctx.generators, GENERATORS, ups, globalMult)
   const clickPower = computeClickPower(
-    basePower,
+    ctx.basePower,
     manaPerSecond,
     ups,
-    stardustClickPercent(stardustUpgrades),
+    stardustClickPercent(ctx.stardustUpgrades),
   )
   return { manaPerSecond, clickPower, globalMult }
 }
@@ -276,7 +297,15 @@ function withAchievements<T extends Partial<GameState>>(
     burstKey: next.burstKey + 1, // 마일스톤 파티클 버스트 트리거(T6.2)
     // 업적수가 늘었으므로 생산 배율 재계산 — 늘어난 mps로 다음 tick/액션에서 연쇄 달성이 이어질 수 있다.
     // 유성 버프(next.activeBuff)도 반영해 재계산 — 버프 중 업적 달성이 버프를 지우지 않게 한다.
-    ...recalcDerived(next.generators, next.upgrades, next.basePower, next.stardust, achievements.length, next.stardustUpgrades, buffMultOf(next.activeBuff)),
+    ...recalcDerived({
+      generators: next.generators,
+      upgradeIds: next.upgrades,
+      basePower: next.basePower,
+      stardust: next.stardust,
+      achievementCount: achievements.length,
+      stardustUpgrades: next.stardustUpgrades,
+      buffMult: buffMultOf(next.activeBuff),
+    }),
   }
 }
 
@@ -307,7 +336,15 @@ export const useGameStore = create<GameState>()((set) => ({
       return withAchievements(s, {
         mana: s.mana - cost,
         generators,
-        ...recalcDerived(generators, s.upgrades, s.basePower, s.stardust, s.achievements.length, s.stardustUpgrades, buffMultOf(s.activeBuff)),
+        ...recalcDerived({
+          generators,
+          upgradeIds: s.upgrades,
+          basePower: s.basePower,
+          stardust: s.stardust,
+          achievementCount: s.achievements.length,
+          stardustUpgrades: s.stardustUpgrades,
+          buffMult: buffMultOf(s.activeBuff),
+        }),
       })
     }),
 
@@ -323,7 +360,15 @@ export const useGameStore = create<GameState>()((set) => ({
       return withAchievements(s, {
         mana: s.mana - def.cost,
         upgrades,
-        ...recalcDerived(s.generators, upgrades, s.basePower, s.stardust, s.achievements.length, s.stardustUpgrades, buffMultOf(s.activeBuff)),
+        ...recalcDerived({
+          generators: s.generators,
+          upgradeIds: upgrades,
+          basePower: s.basePower,
+          stardust: s.stardust,
+          achievementCount: s.achievements.length,
+          stardustUpgrades: s.stardustUpgrades,
+          buffMult: buffMultOf(s.activeBuff),
+        }),
       })
     }),
 
@@ -343,15 +388,15 @@ export const useGameStore = create<GameState>()((set) => ({
       return {
         stardust,
         stardustUpgrades,
-        ...recalcDerived(
-          s.generators,
-          s.upgrades,
-          s.basePower,
+        ...recalcDerived({
+          generators: s.generators,
+          upgradeIds: s.upgrades,
+          basePower: s.basePower,
           stardust,
-          s.achievements.length,
+          achievementCount: s.achievements.length,
           stardustUpgrades,
-          buffMultOf(s.activeBuff),
-        ),
+          buffMult: buffMultOf(s.activeBuff),
+        }),
       }
     }),
 
@@ -411,7 +456,15 @@ export const useGameStore = create<GameState>()((set) => ({
         partial = {
           ...partial,
           activeBuff: null,
-          ...recalcDerived(s.generators, s.upgrades, s.basePower, s.stardust, s.achievements.length, s.stardustUpgrades, 1),
+          ...recalcDerived({
+            generators: s.generators,
+            upgradeIds: s.upgrades,
+            basePower: s.basePower,
+            stardust: s.stardust,
+            achievementCount: s.achievements.length,
+            stardustUpgrades: s.stardustUpgrades,
+            buffMult: 1,
+          }),
         }
       }
       if (now - s.lastAchievementCheckAt < ACHIEVEMENT_CHECK_INTERVAL_MS) return partial
@@ -446,10 +499,20 @@ export const useGameStore = create<GameState>()((set) => ({
         totalLifetimeMana: st.totalLifetimeMana,
         muted: st.muted,
         playtimeMs: st.playtimeMs,
+        // saveCount는 단조 카운터라 세이브 값에서 이어간다(로드 후 저장이 이어서 +1). deviceId는 이 기기 값 유지.
+        saveCount: st.saveCount,
         // 로드 시 토스트는 띄우지 않는다(이미 달성한 것). 스로틀 시각도 초기화.
         toasts: s.toasts,
         lastAchievementCheckAt: 0,
-        ...recalcDerived(generators, upgrades, st.basePower, st.stardust, achievements.length, stardustUpgrades, buffMultOf(s.activeBuff)),
+        ...recalcDerived({
+          generators,
+          upgradeIds: upgrades,
+          basePower: st.basePower,
+          stardust: st.stardust,
+          achievementCount: achievements.length,
+          stardustUpgrades,
+          buffMult: buffMultOf(s.activeBuff),
+        }),
       }
     }),
 
@@ -518,7 +581,15 @@ export const useGameStore = create<GameState>()((set) => ({
         totalPrestiges,
         lastTick: Date.now(),
         burstKey: s.burstKey + 1, // 각성 순간에도 마일스톤 파티클 버스트(T6.2)
-        ...recalcDerived(generators, upgrades, INITIAL_CLICK_POWER, stardust, s.achievements.length, s.stardustUpgrades, buffMultOf(s.activeBuff)),
+        ...recalcDerived({
+          generators,
+          upgradeIds: upgrades,
+          basePower: INITIAL_CLICK_POWER,
+          stardust,
+          achievementCount: s.achievements.length,
+          stardustUpgrades: s.stardustUpgrades,
+          buffMult: buffMultOf(s.activeBuff),
+        }),
       })
     }),
 
@@ -543,21 +614,24 @@ export const useGameStore = create<GameState>()((set) => ({
           },
         ],
         burstKey: s.burstKey + 1, // 화려한 획득 이펙트(파티클 버스트) 트리거
-        ...recalcDerived(
-          s.generators,
-          s.upgrades,
-          s.basePower,
-          s.stardust,
-          s.achievements.length,
-          s.stardustUpgrades,
-          activeBuff.mult,
-        ),
+        ...recalcDerived({
+          generators: s.generators,
+          upgradeIds: s.upgrades,
+          basePower: s.basePower,
+          stardust: s.stardust,
+          achievementCount: s.achievements.length,
+          stardustUpgrades: s.stardustUpgrades,
+          buffMult: activeBuff.mult,
+        }),
       }
     }),
 
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   toggleMuted: () => set((s) => ({ muted: !s.muted })),
+
+  // 저장마다 +1(단조 증가). saveNow가 직렬화 직전 호출 → 세이브에 이번 저장의 카운터가 담긴다.
+  bumpSaveCount: () => set((s) => ({ saveCount: s.saveCount + 1 })),
 
   // ⚠ 디버그 전용 — 프로덕션 코드에서 호출 금지(치트 도구 debug/cheats.ts에서만 사용).
   // click과 동일하게 순수 획득으로 취급: mana + 각성 기준(lifetimeMana) + 총 누적 통계도 함께 올린다.

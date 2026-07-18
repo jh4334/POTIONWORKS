@@ -15,6 +15,7 @@ import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
 import { STARDUST_UPGRADES } from '../data/stardustShop.ts'
+import { useGameStore } from '../store/gameStore.ts'
 import {
   SAVE_KEY,
   SAVE_CORRUPT_KEY,
@@ -48,6 +49,8 @@ function makeState(): SaveState {
     muted: true,
     playtimeMs: 123_456,
     stardustUpgrades: { [KNOWN_STARDUST]: 3 },
+    deviceId: 'device-fixture-abc',
+    saveCount: 17,
   }
 }
 
@@ -288,8 +291,56 @@ describe('migrate', () => {
     }
     const out = migrate(v4)
     expect(out).not.toBeNull()
-    expect(out!.version).toBe(SAVE_VERSION) // 5로 승격
+    expect(out!.version).toBe(SAVE_VERSION) // 6으로 승격
     expect(out!.state.stardustUpgrades).toEqual({})
+  })
+
+  it('v5→v6: deviceId는 현재 기기값(문자열), saveCount=0으로 초기화', () => {
+    const v5 = {
+      version: 5,
+      savedAt: FIXED_NOW,
+      state: {
+        mana: 100,
+        basePower: 1,
+        lastTick: 5,
+        buyAmount: 1,
+        generators: {},
+        upgrades: [],
+        lifetimeMana: 777,
+        stardust: 2,
+        totalPrestiges: 1,
+        achievements: [],
+        totalClicks: 10,
+        totalLifetimeMana: 777,
+        muted: false,
+        playtimeMs: 123,
+        stardustUpgrades: {},
+      },
+    }
+    const out = migrate(v5)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 6으로 승격
+    expect(typeof out!.state.deviceId).toBe('string')
+    expect(out!.state.deviceId.length).toBeGreaterThan(0)
+    expect(out!.state.saveCount).toBe(0)
+  })
+
+  it('v6 세이브는 deviceId를 보존하고 saveCount를 채택(손상 saveCount는 0)', () => {
+    const out = migrate({
+      version: 6,
+      savedAt: FIXED_NOW,
+      state: { ...validState(), deviceId: 'other-device-xyz', saveCount: 42 },
+    })
+    expect(out!.state.deviceId).toBe('other-device-xyz') // 다른 기기 저장 — 마이그레이션이 덮어쓰지 않는다
+    expect(out!.state.saveCount).toBe(42)
+    const bad = migrate({
+      version: 6,
+      savedAt: 1,
+      state: { ...validState(), deviceId: '', saveCount: -3 },
+    })
+    expect(typeof bad!.state.deviceId).toBe('string')
+    expect(bad!.state.deviceId.length).toBeGreaterThan(0) // 빈 deviceId → 현재 기기값
+    expect(bad!.state.saveCount).toBe(0) // 음수 → 0
   })
 
   it('v5 세이브는 stardustUpgrades를 채택(미지 id 제거·손상값 제거·maxLevel 클램프)', () => {
@@ -496,6 +547,26 @@ describe('exportSave/importSave 라운드트립 (T4.2)', () => {
   it('잘못된 문자열이면 null', () => {
     expect(importSave('###not-base64###')).toBeNull()
     expect(importSave('')).toBeNull()
+  })
+})
+
+describe('saveCount 단조 증가(D-5.3, 스토어 액션 경유)', () => {
+  it('bumpSaveCount가 호출마다 +1하고, toSaveData가 현재 카운터를 직렬화한다', () => {
+    const start = useGameStore.getState().saveCount
+    useGameStore.getState().bumpSaveCount()
+    useGameStore.getState().bumpSaveCount()
+    useGameStore.getState().bumpSaveCount()
+    const after = useGameStore.getState().saveCount
+    expect(after).toBe(start + 3) // 단조 증가(연속 3회 → +3)
+    // 직렬화 시 현재 saveCount가 세이브에 담긴다 — 다음 로드가 이어서 증가한다.
+    const data = toSaveData(useGameStore.getState(), FIXED_NOW)
+    expect(data.state.saveCount).toBe(after)
+  })
+
+  it('deviceId는 스토어 초기 상태에서 비어있지 않은 문자열', () => {
+    const id = useGameStore.getState().deviceId
+    expect(typeof id).toBe('string')
+    expect(id.length).toBeGreaterThan(0)
   })
 })
 

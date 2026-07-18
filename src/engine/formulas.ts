@@ -73,11 +73,23 @@ export function generatorMultiplier(
   let mult = 1
   for (const u of purchasedUpgrades) {
     const e = u.effect
-    if (e.kind === 'generatorMult' && e.generatorId === generatorId) {
-      mult *= e.mult
-    } else if (e.kind === 'synergy' && e.targetId === generatorId) {
-      const sourceCount = counts[e.sourceId] ?? 0
-      mult *= 1 + (sourceCount * e.percentPerSource) / 100
+    // exhaustive switch(D-5.1): 새 UpgradeEffect kind 추가 시 default의 never 대입이 컴파일 에러를 낸다.
+    switch (e.kind) {
+      case 'generatorMult':
+        if (e.generatorId === generatorId) mult *= e.mult
+        break
+      case 'synergy':
+        if (e.targetId === generatorId) {
+          const sourceCount = counts[e.sourceId] ?? 0
+          mult *= 1 + (sourceCount * e.percentPerSource) / 100
+        }
+        break
+      case 'clickMpsPercent':
+        break // 클릭 전용 효과 — 티어 배율과 무관.
+      default: {
+        const _exhaustive: never = e
+        void _exhaustive
+      }
     }
   }
   return mult
@@ -89,7 +101,7 @@ export function generatorMultiplier(
 //   전체에 한 번만 곱한다. 개별 시설이 아니라 합산 후 곱해야 배율 의미가 일관된다.
 export function totalMps(
   counts: Record<string, number>,
-  generators: GeneratorDef[],
+  generators: readonly GeneratorDef[],
   purchasedUpgrades: UpgradeDef[] = [],
   globalMult: number = 1,
 ): number {
@@ -118,7 +130,7 @@ export function mpsDelta(
   generatorId: string,
   addCount: number,
   counts: Record<string, number>,
-  generators: GeneratorDef[],
+  generators: readonly GeneratorDef[],
   purchasedUpgrades: UpgradeDef[] = [],
   globalMult: number = 1,
 ): number {
@@ -165,6 +177,23 @@ export function stardustMultiplier(stardust: number): number {
 // 전체 MPS에 스타더스트 배율과 함께 곱해진다(recalcDerived에서 합성).
 export function achievementMultiplier(count: number): number {
   return 1 + count * ACHIEVEMENT_MULT_PER
+}
+
+// 전체 생산 배율의 합성(D-5.2). 스타더스트 배율 × 업적 배율 × 버프 배율을 한 곳에서 곱한다.
+// 배율 소스가 늘어나면(신규 이벤트·매니저 등) 이 함수만 고치면 되도록 합성 지점을 일원화한다.
+// recalcDerived(스토어)가 이 값을 globalMult로 받아 totalMps·clickPower에 반영한다.
+export interface GlobalMultContext {
+  stardust: number
+  achievementCount: number
+  buffMult?: number // 활성 버프 배율(없으면 1).
+}
+
+export function composeGlobalMult({
+  stardust,
+  achievementCount,
+  buffMult = 1,
+}: GlobalMultContext): number {
+  return stardustMultiplier(stardust) * achievementMultiplier(achievementCount) * buffMult
 }
 
 // 업적 달성 판정에 필요한 통계 스냅샷(순수 함수 입력).
@@ -222,7 +251,20 @@ export function clickPower(
 ): number {
   let percent = extraPercent
   for (const u of purchasedUpgrades) {
-    if (u.effect.kind === 'clickMpsPercent') percent += u.effect.percent
+    const e = u.effect
+    // exhaustive switch(D-5.1): 새 UpgradeEffect kind 추가 시 default의 never 대입이 컴파일 에러를 낸다.
+    switch (e.kind) {
+      case 'clickMpsPercent':
+        percent += e.percent
+        break
+      case 'generatorMult':
+      case 'synergy':
+        break // 클릭과 무관 — 생산 배율 전용.
+      default: {
+        const _exhaustive: never = e
+        void _exhaustive
+      }
+    }
   }
   return basePower + (mps * percent) / 100
 }
@@ -244,8 +286,20 @@ export function stardustUpgradeCost(def: StardustUpgradeDef, level: number): num
 export function stardustClickPercent(levels: Record<string, number>): number {
   let percent = 0
   for (const def of STARDUST_UPGRADES) {
-    if (def.effect.kind === 'clickMpsPercent') {
-      percent += clampLevel(def, levels[def.id] ?? 0) * def.effect.perLevel
+    const e = def.effect
+    // exhaustive switch(D-5.1): 새 StardustEffect kind 추가 시 default의 never 대입이 컴파일 에러를 낸다.
+    switch (e.kind) {
+      case 'clickMpsPercent':
+        percent += clampLevel(def, levels[def.id] ?? 0) * e.perLevel
+        break
+      case 'startingApprentices':
+      case 'offlineEfficiency':
+      case 'offlineCap':
+        break // 이 함수와 무관.
+      default: {
+        const _exhaustive: never = e
+        void _exhaustive
+      }
     }
   }
   return percent
@@ -255,8 +309,20 @@ export function stardustClickPercent(levels: Record<string, number>): number {
 export function startingApprentices(levels: Record<string, number>): number {
   let total = 0
   for (const def of STARDUST_UPGRADES) {
-    if (def.effect.kind === 'startingApprentices') {
-      total += clampLevel(def, levels[def.id] ?? 0) * def.effect.perLevel
+    const e = def.effect
+    // exhaustive switch(D-5.1): 새 StardustEffect kind 추가 시 default의 never 대입이 컴파일 에러를 낸다.
+    switch (e.kind) {
+      case 'startingApprentices':
+        total += clampLevel(def, levels[def.id] ?? 0) * e.perLevel
+        break
+      case 'clickMpsPercent':
+      case 'offlineEfficiency':
+      case 'offlineCap':
+        break // 이 함수와 무관.
+      default: {
+        const _exhaustive: never = e
+        void _exhaustive
+      }
     }
   }
   return total
@@ -270,8 +336,20 @@ export function effectiveOfflineEfficiency(
 ): number {
   let eff = base
   for (const def of STARDUST_UPGRADES) {
-    if (def.effect.kind === 'offlineEfficiency') {
-      eff += clampLevel(def, levels[def.id] ?? 0) * def.effect.perLevel
+    const e = def.effect
+    // exhaustive switch(D-5.1): 새 StardustEffect kind 추가 시 default의 never 대입이 컴파일 에러를 낸다.
+    switch (e.kind) {
+      case 'offlineEfficiency':
+        eff += clampLevel(def, levels[def.id] ?? 0) * e.perLevel
+        break
+      case 'startingApprentices':
+      case 'clickMpsPercent':
+      case 'offlineCap':
+        break // 이 함수와 무관.
+      default: {
+        const _exhaustive: never = e
+        void _exhaustive
+      }
     }
   }
   return eff
@@ -284,8 +362,20 @@ export function effectiveOfflineCapMs(
 ): number {
   let cap = base
   for (const def of STARDUST_UPGRADES) {
-    if (def.effect.kind === 'offlineCap') {
-      cap += clampLevel(def, levels[def.id] ?? 0) * def.effect.perLevelMs
+    const e = def.effect
+    // exhaustive switch(D-5.1): 새 StardustEffect kind 추가 시 default의 never 대입이 컴파일 에러를 낸다.
+    switch (e.kind) {
+      case 'offlineCap':
+        cap += clampLevel(def, levels[def.id] ?? 0) * e.perLevelMs
+        break
+      case 'startingApprentices':
+      case 'clickMpsPercent':
+      case 'offlineEfficiency':
+        break // 이 함수와 무관.
+      default: {
+        const _exhaustive: never = e
+        void _exhaustive
+      }
     }
   }
   return cap

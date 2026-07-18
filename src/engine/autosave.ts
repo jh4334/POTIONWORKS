@@ -4,7 +4,7 @@ import { useGameStore } from '../store/gameStore.ts'
 import { saveToLocal, loadFromLocalResult } from './save.ts'
 import { offlineEarnings } from './offline.ts'
 import { effectiveOfflineEfficiency, effectiveOfflineCapMs } from './formulas.ts'
-import { AUTOSAVE_INTERVAL_MS, OFFLINE_MIN_MS } from '../data/config.ts'
+import { AUTOSAVE_INTERVAL_MS, OFFLINE_MIN_MS, SAVE_DEBOUNCE_MS } from '../data/config.ts'
 
 // 앱 시작 시 세이브가 있었는지(=재방문인지) 기록. 타이틀 오버레이는 최초 방문에서만 띄운다(T8.2).
 // loadGame이 렌더 전에 1회 실행되므로, App 최초 마운트 시점에 이 값이 확정돼 있다.
@@ -31,6 +31,8 @@ export function hardResetAndReload(): void {
 // 저장 + 결과에 따른 UI 상태 갱신(D-2.5). 성공하면 "저장됨" 시각 갱신, 실패하면 경고 배너.
 // 수동 저장(Header)·각성 직후·복원 직후가 공통으로 이 경로를 쓴다. true=성공.
 export function saveNow(now: number = Date.now()): boolean {
+  // 저장마다 단조 카운터 +1(D-5.3) — 직렬화 직전에 올려 세이브에 이번 저장의 saveCount가 담기게 한다.
+  useGameStore.getState().bumpSaveCount()
   const ok = saveToLocal(useGameStore.getState(), now)
   const store = useGameStore.getState()
   if (ok) store.markSaved(now)
@@ -77,20 +79,41 @@ export function loadGame(): void {
   }
 }
 
-// 자동저장 루프: 10초 인터벌 + beforeunload 저장.
+// 자동저장 루프: 10초 인터벌 + 종료성 저장 트리거(D-5.4).
+// 종료 저장은 pagehide + visibilitychange(hidden)를 주 트리거로, beforeunload는 보조로 둔다 —
+// 모바일/bfcache 환경에서 beforeunload가 발화하지 않는 경우까지 마지막 상태를 확실히 남기기 위해서다.
+// 이 세 이벤트는 탭 닫힘 시 연달아 발화하므로 종료 저장끼리 1초 디바운스로 중복을 억제한다(중복 자체는 무해).
 // cleanup을 반환하므로 StrictMode 이중 mount에도 인터벌이 중복 생성되지 않는다(tick 루프와 동일 패턴).
 export function startAutosave(): () => void {
-  const save = () => {
+  // 주기 저장(10초). 종료 저장과 주기가 크게 달라(10s ≫ 1s) 디바운스 대상에서 제외 — 인터벌 저장 직후의
+  // 종료 저장이 억제돼 마지막 조작을 잃는 일을 막는다.
+  const intervalSave = () => {
     if (autosaveSuspended) return // 하드리셋 진행 중이면 저장 금지(경합 방지)
-    // 자동저장 성공 시에도 "저장됨" 시각을 갱신한다(D-2.5) — 수동 저장과 동일 경로.
     saveNow()
   }
 
-  const intervalId = setInterval(save, AUTOSAVE_INTERVAL_MS)
-  window.addEventListener('beforeunload', save)
+  // 종료성 저장: pagehide/visibilitychange(hidden)/beforeunload가 연달아 발화해도 1초 내 1회만 저장한다.
+  let lastTerminalSaveAt = 0
+  const terminalSave = () => {
+    if (autosaveSuspended) return
+    const now = Date.now()
+    if (now - lastTerminalSaveAt < SAVE_DEBOUNCE_MS) return
+    lastTerminalSaveAt = now
+    saveNow(now)
+  }
+  const onVisibility = () => {
+    if (document.visibilityState === 'hidden') terminalSave()
+  }
+
+  const intervalId = setInterval(intervalSave, AUTOSAVE_INTERVAL_MS)
+  window.addEventListener('pagehide', terminalSave)
+  document.addEventListener('visibilitychange', onVisibility)
+  window.addEventListener('beforeunload', terminalSave)
 
   return () => {
     clearInterval(intervalId)
-    window.removeEventListener('beforeunload', save)
+    window.removeEventListener('pagehide', terminalSave)
+    document.removeEventListener('visibilitychange', onVisibility)
+    window.removeEventListener('beforeunload', terminalSave)
   }
 }

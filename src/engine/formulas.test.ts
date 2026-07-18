@@ -21,9 +21,10 @@ import {
   effectiveOfflineCapMs,
   nextStardustAt,
   prestigeGain,
+  composeGlobalMult,
   type AchievementStats,
 } from './formulas.ts'
-import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
+import { COST_GROWTH, GENERATORS, type GeneratorDef, type GeneratorId } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
 import type { AchievementDef } from '../data/achievements.ts'
 import { STARDUST_UPGRADES } from '../data/stardustShop.ts'
@@ -39,14 +40,16 @@ const DEF = (id: string) => STARDUST_UPGRADES.find((u) => u.id === id)!
 const HOUR_MS = 60 * 60 * 1000
 
 // 테스트용 업그레이드 정의(수식만 검증하므로 name/desc/cost/unlock은 의미값만 채운다).
+// 시설 참조 필드는 GeneratorId로 좁혀졌지만, 이 순수 함수 테스트는 합성 id('a','b')로 검증하므로 캐스팅한다.
 function mult2(generatorId: string): UpgradeDef {
+  const gid = generatorId as GeneratorId
   return {
     id: `${generatorId}-x2`,
     name: '',
     desc: '',
     cost: 0,
-    unlock: { kind: 'ownedCount', generatorId, minOwned: 10 },
-    effect: { kind: 'generatorMult', generatorId, mult: 2 },
+    unlock: { kind: 'ownedCount', generatorId: gid, minOwned: 10 },
+    effect: { kind: 'generatorMult', generatorId: gid, mult: 2 },
   }
 }
 
@@ -56,8 +59,13 @@ function synergy(sourceId: string, targetId: string, percentPerSource: number): 
     name: '',
     desc: '',
     cost: 0,
-    unlock: { kind: 'ownedCount', generatorId: sourceId, minOwned: 25 },
-    effect: { kind: 'synergy', sourceId, targetId, percentPerSource },
+    unlock: { kind: 'ownedCount', generatorId: sourceId as GeneratorId, minOwned: 25 },
+    effect: {
+      kind: 'synergy',
+      sourceId: sourceId as GeneratorId,
+      targetId: targetId as GeneratorId,
+      percentPerSource,
+    },
   }
 }
 
@@ -340,6 +348,34 @@ describe('achievementMultiplier', () => {
   })
 })
 
+describe('composeGlobalMult (D-5.2)', () => {
+  it('스타더스트 × 업적 × 버프 배율의 곱', () => {
+    // stardust 5 → 1.5, 업적 10 → 1.1, 버프 없음 → 1.
+    expect(composeGlobalMult({ stardust: 5, achievementCount: 10 })).toBeCloseTo(1.5 * 1.1)
+    // 버프 지정 시 함께 곱해진다.
+    expect(composeGlobalMult({ stardust: 5, achievementCount: 10, buffMult: 7 })).toBeCloseTo(
+      1.5 * 1.1 * 7,
+    )
+  })
+
+  it('buffMult 기본값은 1(미지정 = 버프 없음)', () => {
+    expect(composeGlobalMult({ stardust: 0, achievementCount: 0 })).toBeCloseTo(1)
+    expect(composeGlobalMult({ stardust: 0, achievementCount: 0, buffMult: 1 })).toBeCloseTo(1)
+  })
+
+  it('개별 배율 함수(stardustMultiplier·achievementMultiplier)와 동일한 합성 결과', () => {
+    for (const [s, a, b] of [
+      [0, 0, 1],
+      [3, 7, 1],
+      [12, 20, 7],
+    ] as const) {
+      expect(composeGlobalMult({ stardust: s, achievementCount: a, buffMult: b })).toBeCloseTo(
+        stardustMultiplier(s) * achievementMultiplier(a) * b,
+      )
+    }
+  })
+})
+
 describe('stardustUpgradeCost', () => {
   it('비용 = baseCost × 2^level (정수)', () => {
     const apprentices = DEF('starting-apprentices') // baseCost 1
@@ -522,5 +558,105 @@ describe('isAchievementUnlocked', () => {
     const def = ach({ kind: 'mps', min: 100 })
     expect(isAchievementUnlocked(def, { ...base, mps: 99.9 })).toBe(false)
     expect(isAchievementUnlocked(def, { ...base, mps: 100 })).toBe(true)
+  })
+})
+
+// --- 비용 곡선 property fuzz (D-5.5) ---
+// 시드 고정 결정적 루프(라이브러리 금지). 비용 곡선은 세이브·구매의 진실이라, 경계값 스팟 테스트에 더해
+// 넓은 파라미터 공간에서 라운드트립·단조성·분할 일관성을 확률적으로 훑는다.
+//
+// 핵심 명제: bulkCost의 단일 진실은 closed-form
+//   raw(owned, count) = baseCost · r^owned · (r^count − 1)/(r − 1)   (r = COST_GROWTH)
+// 이고 bulkCost는 이 raw를 한 번만 ceil한 값이다. 따라서 항별로 나눠 더한 합(bulk(o,k)+bulk(o+k,m))은
+// closed-form 전체(bulk(o,k+m))와 ceil(및 부동소수 ulp) 차이만큼만 어긋난다 — 아래 (c)에서 그 차이를 명시적으로 허용한다.
+
+// mulberry32: 32비트 시드 결정적 PRNG(외부 라이브러리 없이 재현 가능한 fuzz 시퀀스).
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+// closed-form raw 비용(단일 진실). bulkCost = ceil(rawBulk).
+function rawBulk(baseCost: number, owned: number, count: number): number {
+  if (count <= 0) return 0
+  const r = COST_GROWTH
+  return (baseCost * r ** owned * (r ** count - 1)) / (r - 1)
+}
+
+const BASE_COSTS = GENERATORS.map((g) => g.baseCost) // 6개 실제 baseCost
+
+describe('비용 곡선 property fuzz (D-5.5)', () => {
+  it('(a) maxAffordable 라운드트립: bulk(n) ≤ mana < bulk(n+1), n=0이면 bulk(1) > mana', () => {
+    const rng = mulberry32(0xc0ffee)
+    let checks = 0
+    for (const baseCost of BASE_COSTS) {
+      for (let iter = 0; iter < 200; iter += 1) {
+        const owned = Math.floor(rng() * 301) // 0~300
+        // mana 로그 스케일 샘플: exp(u · ln(1e18)) → [1, 1e18]. 유한 bulkCost·상한 이내 보장.
+        const mana = Math.exp(rng() * Math.log(1e18))
+        const n = maxAffordable(baseCost, owned, mana)
+        expect(Number.isFinite(n)).toBe(true)
+        expect(n).toBeGreaterThanOrEqual(0)
+        if (n === 0) {
+          // 1개도 못 산다 → 1개 가격이 mana보다 크다.
+          expect(bulkCost(baseCost, owned, 1)).toBeGreaterThan(mana)
+        } else {
+          // n개는 사도 되고(≤ mana), n+1개는 못 산다(> mana).
+          expect(bulkCost(baseCost, owned, n)).toBeLessThanOrEqual(mana)
+          expect(bulkCost(baseCost, owned, n + 1)).toBeGreaterThan(mana)
+        }
+        checks += 1
+      }
+    }
+    expect(checks).toBe(BASE_COSTS.length * 200)
+  })
+
+  it('(b) bulkCost 단조성: count·owned에 대해 비감소', () => {
+    const rng = mulberry32(0x1234abcd)
+    for (const baseCost of BASE_COSTS) {
+      for (let iter = 0; iter < 150; iter += 1) {
+        const owned = Math.floor(rng() * 201) // 0~200
+        const count = 1 + Math.floor(rng() * 100) // 1~100
+        // count 단조: n → n+1 은 비감소(양수 항을 더함).
+        expect(bulkCost(baseCost, owned, count + 1)).toBeGreaterThanOrEqual(
+          bulkCost(baseCost, owned, count),
+        )
+        // owned 단조: 같은 count라도 보유수가 많을수록 비감소(더 비싼 항들).
+        expect(bulkCost(baseCost, owned + 1, count)).toBeGreaterThanOrEqual(
+          bulkCost(baseCost, owned, count),
+        )
+      }
+    }
+  })
+
+  it('(c) 분할 일관성: bulk(o,k) + bulk(o+k,m) ≈ bulk(o,k+m)', () => {
+    const rng = mulberry32(0x9e3779b9)
+    for (const baseCost of BASE_COSTS) {
+      for (let iter = 0; iter < 150; iter += 1) {
+        const o = Math.floor(rng() * 151) // 0~150
+        const k = 1 + Math.floor(rng() * 60) // 1~60
+        const m = 1 + Math.floor(rng() * 60) // 1~60
+
+        // closed-form(단일 진실)은 분할 항등식이 부동소수 ulp까지 성립 — 상대오차 1e-9 이내.
+        const rawSplit = rawBulk(baseCost, o, k) + rawBulk(baseCost, o + k, m)
+        const rawWhole = rawBulk(baseCost, o, k + m)
+        expect(Math.abs(rawSplit - rawWhole) / rawWhole).toBeLessThan(1e-9)
+
+        // 실제 bulkCost(정수)는 항별 ceil 2회 vs 전체 ceil 1회 차이만큼만 어긋난다. closed-form이 단일 진실이고
+        // 항별 합은 ulp 차이를 허용하므로, 허용 오차는 상대(1e-9)로 잡되 작은 값에서의 정수 ceil 여유(≤2)를 더한다:
+        //   큰 값 → 부동소수 ulp가 커져 상대오차 1e-9가 지배, 작은 값 → 항별 ceil 2회로 최대 2까지 어긋난다.
+        // 큰 값에선 r^(o+k) ≠ r^o·r^k(부동소수)라 항별 합이 전체보다 근소히 크거나 작을 수 있어 양방향 허용한다.
+        const split = bulkCost(baseCost, o, k) + bulkCost(baseCost, o + k, m)
+        const whole = bulkCost(baseCost, o, k + m)
+        const tolerance = Math.max(2 + 1e-6, whole * 1e-9)
+        expect(Math.abs(split - whole)).toBeLessThanOrEqual(tolerance)
+      }
+    }
   })
 })
