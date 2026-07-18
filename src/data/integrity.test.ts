@@ -3,6 +3,7 @@ import { GENERATORS } from './generators.ts'
 import { UPGRADES } from './upgrades.ts'
 import { ACHIEVEMENTS } from './achievements.ts'
 import { STARDUST_UPGRADES } from './stardustShop.ts'
+import { GOLDEN_EVENTS, pickGoldenEvent, goldenEventByKind } from './events.ts'
 
 // 데이터 참조 무결성(D-5.1). GeneratorId 타입화가 컴파일 단계에서 오타를 막지만,
 // 런타임 데이터(파생 생성·수동 정의)가 실제 GENERATORS와 일치하는지·id 중복이 없는지 테스트로 고정한다.
@@ -56,6 +57,42 @@ describe('업적 참조 무결성', () => {
 
   it('업적 id에 중복이 없다', () => {
     expect(duplicates(ACHIEVEMENTS.map((a) => a.id))).toEqual([])
+  })
+
+  it('업적은 40개, 그중 숨겨진 업적은 4개(E-1.3)', () => {
+    expect(ACHIEVEMENTS.length).toBe(40)
+    expect(ACHIEVEMENTS.filter((a) => a.hidden === true).length).toBe(4)
+  })
+})
+
+describe('골든 이벤트 데이터 무결성(E-1.4)', () => {
+  it('이벤트 kind에 중복이 없고, 가중치는 모두 양수', () => {
+    expect(duplicates(GOLDEN_EVENTS.map((e) => e.kind))).toEqual([])
+    for (const e of GOLDEN_EVENTS) expect(e.weight).toBeGreaterThan(0)
+  })
+
+  it('goldenEventByKind가 각 종류를 찾는다', () => {
+    for (const e of GOLDEN_EVENTS) expect(goldenEventByKind(e.kind).kind).toBe(e.kind)
+  })
+
+  it('pickGoldenEvent: roll 0은 첫 정의, roll≈1은 마지막 정의', () => {
+    expect(pickGoldenEvent(0).kind).toBe(GOLDEN_EVENTS[0].kind)
+    expect(pickGoldenEvent(0.999999).kind).toBe(GOLDEN_EVENTS[GOLDEN_EVENTS.length - 1].kind)
+  })
+
+  it('pickGoldenEvent: 가중치 경계에서 정확히 갈린다(생산 60/클릭 25/드래곤 15)', () => {
+    const total = GOLDEN_EVENTS.reduce((s, e) => s + e.weight, 0)
+    // production 구간(0 ~ 60/total) 직전/직후, click 구간 직후.
+    expect(pickGoldenEvent((GOLDEN_EVENTS[0].weight - 1) / total).kind).toBe('production')
+    expect(pickGoldenEvent((GOLDEN_EVENTS[0].weight + 1) / total).kind).toBe('click')
+    const upToClick = GOLDEN_EVENTS[0].weight + GOLDEN_EVENTS[1].weight
+    expect(pickGoldenEvent((upToClick + 1) / total).kind).toBe('dragon')
+  })
+
+  it('pickGoldenEvent: 비유한 roll도 유효한 정의를 돌려준다', () => {
+    expect(pickGoldenEvent(NaN).kind).toBe(GOLDEN_EVENTS[0].kind)
+    expect(pickGoldenEvent(2).kind).toBe(GOLDEN_EVENTS[GOLDEN_EVENTS.length - 1].kind)
+    expect(pickGoldenEvent(-1).kind).toBe(GOLDEN_EVENTS[0].kind)
   })
 })
 

@@ -51,6 +51,10 @@ function makeState(): SaveState {
     stardustUpgrades: { [KNOWN_STARDUST]: 3 },
     deviceId: 'device-fixture-abc',
     saveCount: 17,
+    meteorsClicked: 9,
+    prestigeCancels: 2,
+    mutedPlaytimeMs: 654_321,
+    dragonVisits: 4,
   }
 }
 
@@ -341,6 +345,58 @@ describe('migrate', () => {
     expect(typeof bad!.state.deviceId).toBe('string')
     expect(bad!.state.deviceId.length).toBeGreaterThan(0) // 빈 deviceId → 현재 기기값
     expect(bad!.state.saveCount).toBe(0) // 음수 → 0
+  })
+
+  it('v6→v7: 통계 카운터가 없으면 모두 0으로 초기화', () => {
+    const v6 = {
+      version: 6,
+      savedAt: FIXED_NOW,
+      state: { ...validState(), deviceId: 'dev-x', saveCount: 3 },
+    }
+    const out = migrate(v6)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 7로 승격
+    expect(out!.state.meteorsClicked).toBe(0)
+    expect(out!.state.prestigeCancels).toBe(0)
+    expect(out!.state.mutedPlaytimeMs).toBe(0)
+    expect(out!.state.dragonVisits).toBe(0)
+  })
+
+  it('v7 세이브는 통계 카운터를 채택(손상·음수·NaN은 0, 정수 카운터는 내림)', () => {
+    const ok = migrate({
+      version: 7,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        meteorsClicked: 12.9,
+        prestigeCancels: 5,
+        mutedPlaytimeMs: 777_777,
+        dragonVisits: 3,
+      },
+    })
+    expect(ok!.state.meteorsClicked).toBe(12) // 내림
+    expect(ok!.state.prestigeCancels).toBe(5)
+    expect(ok!.state.mutedPlaytimeMs).toBe(777_777)
+    expect(ok!.state.dragonVisits).toBe(3)
+    const bad = migrate({
+      version: 7,
+      savedAt: 1,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        meteorsClicked: -1,
+        prestigeCancels: NaN,
+        mutedPlaytimeMs: -5,
+        dragonVisits: 'x',
+      },
+    })
+    expect(bad!.state.meteorsClicked).toBe(0)
+    expect(bad!.state.prestigeCancels).toBe(0)
+    expect(bad!.state.mutedPlaytimeMs).toBe(0)
+    expect(bad!.state.dragonVisits).toBe(0)
   })
 
   it('v5 세이브는 stardustUpgrades를 채택(미지 id 제거·손상값 제거·maxLevel 클램프)', () => {

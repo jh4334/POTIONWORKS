@@ -47,6 +47,7 @@ export default function PrestigeModal() {
   const stardust = useGameStore((s) => s.stardust)
   const totalPrestiges = useGameStore((s) => s.totalPrestiges)
   const prestige = useGameStore((s) => s.prestige)
+  const cancelPrestige = useGameStore((s) => s.cancelPrestige)
 
   const [showConfirm, setShowConfirm] = useState(false)
   const [showShop, setShowShop] = useState(false)
@@ -63,6 +64,12 @@ export default function PrestigeModal() {
   const handlePrestige = () => {
     prestige()
     saveNow() // 각성 직후 즉시 저장 — 새로고침으로 되돌리기 방지 + "저장됨" 시각 갱신.
+    setShowConfirm(false)
+  }
+
+  // 확인 모달을 각성하지 않고 닫으면 취소로 집계한다(취소 버튼·배경/X 공용). 숨겨진 업적 '미련의 대가'(3회).
+  const handleCancel = () => {
+    cancelPrestige()
     setShowConfirm(false)
   }
 
@@ -119,7 +126,7 @@ export default function PrestigeModal() {
       )}
 
       {showConfirm && canPrestige && (
-        <Modal title={STRINGS.prestige.confirmTitle} onClose={() => setShowConfirm(false)}>
+        <Modal title={STRINGS.prestige.confirmTitle} onClose={handleCancel}>
           <p className="modal-body">
             {STRINGS.prestige.confirmLead}{' '}
             <strong className="offline-amount">{STRINGS.prestige.confirmGain(formatNumber(gain))}</strong>
@@ -137,7 +144,7 @@ export default function PrestigeModal() {
             {STRINGS.prestige.confirmKeep}
           </p>
           <div className="modal-actions">
-            <button type="button" className="modal-button" onClick={() => setShowConfirm(false)}>
+            <button type="button" className="modal-button" onClick={handleCancel}>
               {STRINGS.common.cancel}
             </button>
             <button

@@ -24,6 +24,13 @@ export default function AchievementsModal({ onClose }: Props) {
         totalLifetimeMana: Math.floor(s.totalLifetimeMana),
         totalPrestiges: s.totalPrestiges,
         mps: Math.floor(s.manaPerSecond),
+        stardust: s.stardust,
+        playtimeMs: s.playtimeMs,
+        meteorsClicked: s.meteorsClicked,
+        prestigeCancels: s.prestigeCancels,
+        mutedPlaytimeMs: s.mutedPlaytimeMs,
+        clickCombo: s.clickCombo,
+        dragonVisits: s.dragonVisits,
       }),
     ),
   )
@@ -50,16 +57,22 @@ export default function AchievementsModal({ onClose }: Props) {
           const target = a.condition.min
           const current = achievementCurrent(a, stats)
           const ratio = target > 0 ? Math.min(1, current / target) : 1
+          // 숨겨진 업적(E-1.3): 달성 전에는 이름 "???" + 힌트(desc)·진행도 비표시(조건 노출 방지).
+          // 달성하면 일반 업적처럼 이름/설명이 드러난다.
+          const isHidden = a.hidden === true && !done
           return (
             <div
               key={a.id}
-              className={`achievement-item${done ? ' achievement-item--done' : ''}`}
+              className={`achievement-item${done ? ' achievement-item--done' : ''}${isHidden ? ' achievement-item--hidden' : ''}`}
             >
-              <span className="achievement-item-mark">{done ? '✅' : '🔒'}</span>
+              <span className="achievement-item-mark">{done ? '✅' : isHidden ? '❓' : '🔒'}</span>
               <div className="achievement-item-body">
-                <div className="achievement-item-name">{done ? a.name : STRINGS.achievements.lockedName}</div>
-                <div className="achievement-item-desc">{a.desc}</div>
-                {!done && (
+                {/* 이름은 숨겨진 업적만 가린다 — 일반 잠금 업적은 이름·조건 힌트가 목표 리스트 역할(U1 리뷰). */}
+                <div className="achievement-item-name">{isHidden ? STRINGS.achievements.lockedName : a.name}</div>
+                <div className="achievement-item-desc">
+                  {isHidden ? STRINGS.achievements.hiddenDesc : a.desc}
+                </div>
+                {!done && !isHidden && (
                   <div className="achievement-progress">
                     <div className="achievement-progress-bar">
                       <div

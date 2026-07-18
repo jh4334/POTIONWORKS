@@ -7,7 +7,7 @@ import GeneratorList from './components/GeneratorList.tsx'
 import OfflineModal from './components/OfflineModal.tsx'
 import AchievementToast from './components/AchievementToast.tsx'
 import BurstEffect from './components/BurstEffect.tsx'
-import Meteor from './components/Meteor.tsx'
+import GoldenEvent from './components/GoldenEvent.tsx'
 import PrestigeSequence from './components/PrestigeSequence.tsx'
 import TitleScreen from './components/TitleScreen.tsx'
 import { startTickLoop } from './engine/tick.ts'
@@ -84,7 +84,7 @@ export default function App() {
       <OfflineModal />
       <AchievementToast />
       <BurstEffect />
-      <Meteor />
+      <GoldenEvent />
       <PrestigeSequence />
     </div>
   )

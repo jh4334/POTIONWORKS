@@ -280,6 +280,13 @@ describe('achievementCurrent', () => {
     totalLifetimeMana: 12345,
     totalPrestiges: 3,
     mps: 99,
+    stardust: 11,
+    playtimeMs: 3600000,
+    meteorsClicked: 8,
+    prestigeCancels: 2,
+    mutedPlaytimeMs: 120000,
+    clickCombo: 55,
+    dragonVisits: 1,
   }
 
   it('조건 종류별 현재값을 통계에서 파생', () => {
@@ -290,6 +297,16 @@ describe('achievementCurrent', () => {
     expect(achievementCurrent(ach({ kind: 'lifetimeMana', min: 1e6 }), stats)).toBe(12345)
     expect(achievementCurrent(ach({ kind: 'prestiges', min: 5 }), stats)).toBe(3)
     expect(achievementCurrent(ach({ kind: 'mps', min: 100 }), stats)).toBe(99)
+  })
+
+  it('E-1.3 신규 조건 종류별 현재값을 통계에서 파생', () => {
+    expect(achievementCurrent(ach({ kind: 'stardust', min: 25 }), stats)).toBe(11)
+    expect(achievementCurrent(ach({ kind: 'playtime', min: 1 }), stats)).toBe(3600000)
+    expect(achievementCurrent(ach({ kind: 'meteorsClicked', min: 5 }), stats)).toBe(8)
+    expect(achievementCurrent(ach({ kind: 'prestigeCancels', min: 3 }), stats)).toBe(2)
+    expect(achievementCurrent(ach({ kind: 'mutedPlaytime', min: 1 }), stats)).toBe(120000)
+    expect(achievementCurrent(ach({ kind: 'clickCombo', min: 100 }), stats)).toBe(55)
+    expect(achievementCurrent(ach({ kind: 'dragonVisits', min: 1 }), stats)).toBe(1)
   })
 
   it('보유하지 않은 시설은 0', () => {
@@ -500,6 +517,15 @@ describe('clickPower', () => {
     // 1 + 1000 * 2/100 = 1 + 20 = 21
     expect(clickPower(1, 1000, [clickPercent(1), clickPercent(1)])).toBeCloseTo(21)
   })
+
+  it('클릭 버프 배율(E-1.4 마나 폭풍)은 최종 클릭 파워에 곱해진다', () => {
+    // 미지정=1(기존과 동일)
+    expect(clickPower(1, 1000, [clickPercent(1)])).toBeCloseTo(11)
+    // ×10: (1 + 1000*1%) * 10 = 110
+    expect(clickPower(1, 1000, [clickPercent(1)], 0, 10)).toBeCloseTo(110)
+    // 업그레이드 없어도 base에 곱: 5 * 10 = 50
+    expect(clickPower(5, 0, [], 0, 10)).toBeCloseTo(50)
+  })
 })
 
 describe('isUpgradeUnlocked', () => {
@@ -526,6 +552,13 @@ describe('isAchievementUnlocked', () => {
     totalLifetimeMana: 0,
     totalPrestiges: 0,
     mps: 0,
+    stardust: 0,
+    playtimeMs: 0,
+    meteorsClicked: 0,
+    prestigeCancels: 0,
+    mutedPlaytimeMs: 0,
+    clickCombo: 0,
+    dragonVisits: 0,
   }
 
   it('clicks: 총 클릭 수 경계', () => {
@@ -558,6 +591,23 @@ describe('isAchievementUnlocked', () => {
     const def = ach({ kind: 'mps', min: 100 })
     expect(isAchievementUnlocked(def, { ...base, mps: 99.9 })).toBe(false)
     expect(isAchievementUnlocked(def, { ...base, mps: 100 })).toBe(true)
+  })
+
+  it('E-1.3 신규 조건: stardust/playtime/meteorsClicked/prestigeCancels/mutedPlaytime/clickCombo/dragonVisits 경계', () => {
+    expect(isAchievementUnlocked(ach({ kind: 'stardust', min: 25 }), { ...base, stardust: 24 })).toBe(false)
+    expect(isAchievementUnlocked(ach({ kind: 'stardust', min: 25 }), { ...base, stardust: 25 })).toBe(true)
+    expect(isAchievementUnlocked(ach({ kind: 'playtime', min: 1000 }), { ...base, playtimeMs: 999 })).toBe(false)
+    expect(isAchievementUnlocked(ach({ kind: 'playtime', min: 1000 }), { ...base, playtimeMs: 1000 })).toBe(true)
+    expect(isAchievementUnlocked(ach({ kind: 'meteorsClicked', min: 5 }), { ...base, meteorsClicked: 4 })).toBe(false)
+    expect(isAchievementUnlocked(ach({ kind: 'meteorsClicked', min: 5 }), { ...base, meteorsClicked: 5 })).toBe(true)
+    expect(isAchievementUnlocked(ach({ kind: 'prestigeCancels', min: 3 }), { ...base, prestigeCancels: 2 })).toBe(false)
+    expect(isAchievementUnlocked(ach({ kind: 'prestigeCancels', min: 3 }), { ...base, prestigeCancels: 3 })).toBe(true)
+    expect(isAchievementUnlocked(ach({ kind: 'mutedPlaytime', min: 3600000 }), { ...base, mutedPlaytimeMs: 3599999 })).toBe(false)
+    expect(isAchievementUnlocked(ach({ kind: 'mutedPlaytime', min: 3600000 }), { ...base, mutedPlaytimeMs: 3600000 })).toBe(true)
+    expect(isAchievementUnlocked(ach({ kind: 'clickCombo', min: 100 }), { ...base, clickCombo: 99 })).toBe(false)
+    expect(isAchievementUnlocked(ach({ kind: 'clickCombo', min: 100 }), { ...base, clickCombo: 100 })).toBe(true)
+    expect(isAchievementUnlocked(ach({ kind: 'dragonVisits', min: 1 }), { ...base, dragonVisits: 0 })).toBe(false)
+    expect(isAchievementUnlocked(ach({ kind: 'dragonVisits', min: 1 }), { ...base, dragonVisits: 1 })).toBe(true)
   })
 })
 

@@ -19,6 +19,7 @@ export const STRINGS = {
     mana: (amount: string) => `${amount} 마나`,
     mps: (v: string) => `초당 ${v}`,
     meteorBadgeTitle: '유성 버프 — 생산 폭주 중',
+    clickBuffBadgeTitle: '마나 폭풍 — 클릭 폭주 중',
     meteorBadge: (mult: number, remaining: number) => `×${mult} (남은 ${remaining}초)`,
     stardustTitle: (percent: number) => `전체 생산 +${percent}% · 클릭하면 스타더스트 상점`,
     savedAt: (clock: string) => `${clock} 저장됨`,
@@ -146,6 +147,8 @@ export const STRINGS = {
     bonusLead: '업적 보너스:',
     bonusTail: ' 생산',
     lockedName: '???',
+    // 숨겨진 업적(E-1.3): 달성 전에는 힌트(desc)·진행도를 숨기고 이 안내만 보여준다.
+    hiddenDesc: '숨겨진 업적 — 조건은 비밀이에요',
   },
 
   error: {
@@ -161,6 +164,13 @@ export const STRINGS = {
     aria: '유성 — 클릭하면 마나 폭주 버프',
   },
 
+  // E-1.4 골든 이벤트 — 종류별 접근성 라벨(출현 글리프가 종류에 따라 달라진다).
+  goldenEvent: {
+    productionAria: '유성 — 클릭하면 생산 폭주 버프',
+    clickAria: '먹구름 — 클릭하면 클릭 폭풍 버프',
+    dragonAria: '늙은 드래곤 — 클릭하면 마나 즉시 지급',
+  },
+
   titleScreen: {
     sub: '포션 공방 방치형',
     start: '게임 시작',
@@ -171,6 +181,11 @@ export const STRINGS = {
     achievementSub: '+1% 생산',
     meteorTitle: '마나 폭주!',
     meteorSub: (seconds: number, mult: number) => `${seconds}초간 생산 ×${mult}`,
+    // E-1.4 골든 이벤트 확장 — 마나 폭풍(클릭 버프)·늙은 드래곤(즉시 지급).
+    clickStormTitle: '마나 폭풍!',
+    clickStormSub: (seconds: number, mult: number) => `${seconds}초간 클릭 ×${mult}`,
+    dragonTitle: '늙은 드래곤의 축복!',
+    dragonSub: (amount: string) => `${amount} 마나를 선물받았어요`,
   },
 
   banner: {
@@ -203,7 +218,8 @@ export const STRINGS = {
       base64Failed: '[save] Base64 디코드 실패 — 잘못된 백업 문자열.',
     },
     cheats: {
-      enabled: '[cheats] window.cheats 활성화 — addMana(n) · x1000() · simulate(hours) · meteor() · reset()',
+      enabled:
+        '[cheats] window.cheats 활성화 — addMana(n) · x1000() · simulate(hours) · event(kind?) · meteor() · reset()',
     },
     errorBoundary: {
       caught: '[ErrorBoundary] 렌더 예외를 잡았습니다.',

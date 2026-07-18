@@ -7,13 +7,19 @@ import {
   TICK_REANCHOR_TOLERANCE_MS,
   METEOR_BUFF_MULT,
   METEOR_BUFF_DURATION_MS,
+  CLICK_BUFF_MULT,
+  CLICK_BUFF_DURATION_MS,
+  DRAGON_GRANT_SECONDS,
+  CLICK_COMBO_WINDOW_MS,
 } from '../data/config.ts'
 import { offlineEarnings } from '../engine/offline.ts'
 import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES, resolveUpgrades } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
 import { stardustUpgradeById } from '../data/stardustShop.ts'
+import { goldenEventByKind, type GoldenEventKind } from '../data/events.ts'
 import { STRINGS } from '../data/strings.ts'
+import { formatNumber } from '../utils/format.ts'
 import {
   bulkCost,
   totalMps,
@@ -53,9 +59,12 @@ export interface AchievementToast {
   sub?: string
 }
 
-// 활성 버프(D-4.6 유성). MPS에 영향을 주는 런타임 상태 — UI 상태가 아니다.
+// 활성 버프(D-4.6 유성 · E-1.4 확장). 생산/클릭 배율에 영향을 주는 런타임 상태 — UI 상태가 아니다.
 // 세이브 비포함: 로드 시 소멸(단순 유지). 만료 판정은 tick에서(now >= endsAt), 타이머 신뢰 금지 원칙.
-export interface ActiveBuff {
+// kind로 적용 경로가 갈린다: 'production'은 MPS(globalMult)에, 'click'은 클릭 파워 최종값에 곱해진다.
+// 종류가 다르면 공존(production+click 동시), 같은 종류를 다시 받으면 시간만 갱신한다(E-1.4).
+export interface Buff {
+  kind: 'production' | 'click'
   mult: number
   endsAt: number // epoch ms — 이 시각 이후 첫 tick에서 해제된다.
 }
@@ -114,9 +123,22 @@ export interface GameState {
   burstKey: number
   // 업적 체크 스로틀용 마지막 검사 시각(세이브 비포함). tick에서 1초에 1번만 검사하기 위한 상태.
   lastAchievementCheckAt: number
-  // 활성 버프(D-4.6 유성). null이면 버프 없음. recalcDerived에서 manaPerSecond에 mult를 곱한다.
-  // 세이브 비포함 — 파생값(MPS)은 저장하지 않으므로 버프가 세이브를 오염시키지 않는다.
-  activeBuff: ActiveBuff | null
+  // 활성 버프 목록(D-4.6 · E-1.4). 종류가 다른 버프는 공존한다(production+click). 세이브 비포함 —
+  // 파생값(MPS·clickPower)은 저장하지 않으므로 버프가 세이브를 오염시키지 않는다. 만료는 tick이 지운다.
+  activeBuffs: Buff[]
+  // 골든 이벤트 클릭 누적(E-1.3, 세이브 v7). 유성/폭풍/드래곤 등 골든 이벤트 클릭마다 +1. 업적 조건.
+  meteorsClicked: number
+  // 각성 확인 모달 취소 누적(E-1.3, 세이브 v7). 숨겨진 업적 '미련의 대가' 조건. cancelPrestige가 증가.
+  prestigeCancels: number
+  // 음소거 상태로 누적한 플레이 시간(ms, E-1.3, 세이브 v7). 숨겨진 업적 '고요한 공방' 조건. tick에서 muted 중 누적.
+  mutedPlaytimeMs: number
+  // 늙은 드래곤 방문 받은 누적(E-1.3, 세이브 v7). 숨겨진 업적 '용의 영접' 조건. 드래곤 이벤트 발동 시 +1.
+  dragonVisits: number
+  // 현재 클릭 콤보(세이브 비포함). 1초 창(CLICK_COMBO_WINDOW_MS) 안에 이어치면 누적, 끊기면 1로 초기화.
+  // 숨겨진 업적 '폭풍 젓기'(100연타) 판정용 — 클릭 액션이 타임스탬프로 계산한다(UI ref 아님).
+  clickCombo: number
+  // 마지막 클릭 시각(epoch ms, 세이브 비포함). clickCombo 연속 판정 기준.
+  lastClickAt: number
   // 솥 클릭: 마나를 clickPower만큼 증가(누적 마나도 함께).
   click: () => void
   // 시설 구매: 비용 확인 후 마나 차감 + 보유 증가 + 파생값 재계산.
@@ -151,9 +173,12 @@ export interface GameState {
   //   totalPrestiges += 1, 그리고 마나/시설/업그레이드/buyAmount/lifetimeMana 초기화.
   //   유지: stardust, totalPrestiges, 업적·통계. 리셋 후 파생값(MPS·clickPower) 재계산.
   prestige: () => void
-  // 유성 버프 발동(D-4.6): activeBuff 설정 + recalcDerived(버프 반영) + 획득 토스트/버스트.
-  //   now는 Date.now(). 만료는 tick이 판정한다(타이머 신뢰 금지).
-  activateMeteorBuff: (now: number) => void
+  // 각성 확인 모달 취소(E-1.3): prestigeCancels += 1. 숨겨진 업적 '미련의 대가'(3회) 판정을 위해 액션으로 센다.
+  cancelPrestige: () => void
+  // 골든 이벤트 발동(D-4.6 · E-1.4): kind별로 생산 버프 / 클릭 버프 / 드래곤 즉시 지급.
+  //   버프는 종류가 다르면 공존, 같으면 시간 갱신. 드래곤은 버프 없이 현재 MPS×N초를 즉시 지급한다.
+  //   meteorsClicked += 1(모든 종류). now는 Date.now(). 버프 만료는 tick이 판정한다(타이머 신뢰 금지).
+  activateGoldenEvent: (kind: GoldenEventKind, now: number) => void
   // 업적 토스트 소멸(자동 3초 타이머가 호출).
   dismissToast: (id: number) => void
   // 음소거 토글(T6.2). 세이브 대상 값이라 액션에서 변형한다.
@@ -213,7 +238,13 @@ function createInitialState() {
     toasts: [] as AchievementToast[],
     burstKey: 0,
     lastAchievementCheckAt: 0,
-    activeBuff: null as ActiveBuff | null,
+    activeBuffs: [] as Buff[],
+    meteorsClicked: 0,
+    prestigeCancels: 0,
+    mutedPlaytimeMs: 0,
+    dragonVisits: 0,
+    clickCombo: 0,
+    lastClickAt: 0,
   }
 }
 
@@ -234,7 +265,8 @@ interface RecalcContext {
   stardust: number
   achievementCount: number
   stardustUpgrades: Record<string, number>
-  buffMult?: number // 활성 유성 버프면 >1, 아니면 1(기본).
+  buffMult?: number // 활성 생산 버프면 >1, 아니면 1(기본). globalMult(MPS)에 합성.
+  clickBuffMult?: number // 활성 클릭 버프면 >1, 아니면 1(기본). 클릭 파워 최종값에 곱함.
 }
 
 function recalcDerived(ctx: RecalcContext): {
@@ -254,14 +286,24 @@ function recalcDerived(ctx: RecalcContext): {
     manaPerSecond,
     ups,
     stardustClickPercent(ctx.stardustUpgrades),
+    ctx.clickBuffMult ?? 1,
   )
   return { manaPerSecond, clickPower, globalMult }
 }
 
-// 활성 버프의 MPS 배율(없으면 1). recalcDerived의 buffMult 인자로 넘긴다(D-4.6).
-// 만료는 tick이 activeBuff를 null로 지워 처리하므로 여기선 시각 비교를 하지 않는다(존재=적용).
-function buffMultOf(activeBuff: ActiveBuff | null): number {
-  return activeBuff ? activeBuff.mult : 1
+// 활성 버프 목록에서 종류별 배율 곱(없으면 1). recalcDerived의 buffMult/clickBuffMult 인자로 넘긴다(E-1.4).
+// 만료는 tick이 activeBuffs에서 지워 처리하므로 여기선 시각 비교를 하지 않는다(목록에 있음=적용).
+// 같은 종류는 하나만 유지(addBuff가 갱신)하지만, 방어적으로 곱으로 합성한다.
+function productionBuffMult(buffs: Buff[]): number {
+  return buffs.reduce((m, b) => (b.kind === 'production' ? m * b.mult : m), 1)
+}
+function clickBuffMult(buffs: Buff[]): number {
+  return buffs.reduce((m, b) => (b.kind === 'click' ? m * b.mult : m), 1)
+}
+
+// 버프 추가/갱신: 같은 종류는 대체(시간 갱신), 다른 종류는 공존(E-1.4). 새 배열을 돌려준다(불변).
+function addBuff(buffs: Buff[], buff: Buff): Buff[] {
+  return [...buffs.filter((b) => b.kind !== buff.kind), buff]
 }
 
 // 토스트 id 카운터(UI 전용, 세이브 비포함). 모듈 스코프면 충분하다.
@@ -281,6 +323,13 @@ function withAchievements<T extends Partial<GameState>>(
     totalLifetimeMana: next.totalLifetimeMana,
     totalPrestiges: next.totalPrestiges,
     mps: next.manaPerSecond,
+    stardust: next.stardust,
+    playtimeMs: next.playtimeMs,
+    meteorsClicked: next.meteorsClicked,
+    prestigeCancels: next.prestigeCancels,
+    mutedPlaytimeMs: next.mutedPlaytimeMs,
+    clickCombo: next.clickCombo,
+    dragonVisits: next.dragonVisits,
   }
   const owned = new Set(next.achievements)
   const unlocked: typeof ACHIEVEMENTS = []
@@ -297,7 +346,7 @@ function withAchievements<T extends Partial<GameState>>(
     toasts,
     burstKey: next.burstKey + 1, // 마일스톤 파티클 버스트 트리거(T6.2)
     // 업적수가 늘었으므로 생산 배율 재계산 — 늘어난 mps로 다음 tick/액션에서 연쇄 달성이 이어질 수 있다.
-    // 유성 버프(next.activeBuff)도 반영해 재계산 — 버프 중 업적 달성이 버프를 지우지 않게 한다.
+    // 활성 버프(next.activeBuffs)도 반영해 재계산 — 버프 중 업적 달성이 버프를 지우지 않게 한다.
     ...recalcDerived({
       generators: next.generators,
       upgradeIds: next.upgrades,
@@ -305,7 +354,8 @@ function withAchievements<T extends Partial<GameState>>(
       stardust: next.stardust,
       achievementCount: achievements.length,
       stardustUpgrades: next.stardustUpgrades,
-      buffMult: buffMultOf(next.activeBuff),
+      buffMult: productionBuffMult(next.activeBuffs),
+      clickBuffMult: clickBuffMult(next.activeBuffs),
     }),
   }
 }
@@ -316,14 +366,20 @@ export const useGameStore = create<GameState>()((set) => ({
   // 클릭 획득은 소비되지 않는 순수 획득 — lifetimeMana(각성 기준)와 통계(총 클릭/총 누적 마나)도 늘린다.
   // 값이 변하므로 끝에서 업적 검사(즉시).
   click: () =>
-    set((s) =>
-      withAchievements(s, {
+    set((s) => {
+      // 콤보: 마지막 클릭 이후 창(1초) 안이면 누적, 끊겼으면 1로 리셋. 숨겨진 업적 '폭풍 젓기'(100연타) 판정.
+      // 진실은 타임스탬프 — UI(ClickerPanel) ref가 아니라 스토어가 판정한다(세이브 비포함 런타임 상태).
+      const now = Date.now()
+      const clickCombo = now - s.lastClickAt < CLICK_COMBO_WINDOW_MS ? s.clickCombo + 1 : 1
+      return withAchievements(s, {
         mana: s.mana + s.clickPower,
         lifetimeMana: s.lifetimeMana + s.clickPower,
         totalLifetimeMana: s.totalLifetimeMana + s.clickPower,
         totalClicks: s.totalClicks + 1,
-      }),
-    ),
+        clickCombo,
+        lastClickAt: now,
+      })
+    }),
 
   buyGenerator: (id, count) =>
     set((s) => {
@@ -344,7 +400,8 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust: s.stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades: s.stardustUpgrades,
-          buffMult: buffMultOf(s.activeBuff),
+          buffMult: productionBuffMult(s.activeBuffs),
+          clickBuffMult: clickBuffMult(s.activeBuffs),
         }),
       })
     }),
@@ -368,7 +425,8 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust: s.stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades: s.stardustUpgrades,
-          buffMult: buffMultOf(s.activeBuff),
+          buffMult: productionBuffMult(s.activeBuffs),
+          clickBuffMult: clickBuffMult(s.activeBuffs),
         }),
       })
     }),
@@ -396,7 +454,8 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades,
-          buffMult: buffMultOf(s.activeBuff),
+          buffMult: productionBuffMult(s.activeBuffs),
+          clickBuffMult: clickBuffMult(s.activeBuffs),
         }),
       }
     }),
@@ -414,14 +473,14 @@ export const useGameStore = create<GameState>()((set) => ({
       // 오프라인 효율·캡은 스타더스트 상점 강화를 반영한 실효값을 쓴다(D-3.1).
       // (순수 계산 offlineEarnings는 그대로 쓰고, 100%/오프라인 조합만 여기 액션에서 한다.)
       //
-      // 유성 버프(D-4.6): manaPerSecond는 버프 배율이 이미 곱해진 값이므로, catch-up/오프라인 공식은
-      // 버프를 뺀 baseMps로 전 구간을 계산하고, 버프 보너스는 "이 tick 구간이 버프 창[start,end]과
-      // 실제로 겹친 시간"만큼만 100%로 더한다. 이렇게 하면 탭을 백그라운드에 두고 복귀해도(큰 elapsed)
-      // 버프가 30초 규칙을 넘겨 과지급되지 않는다(만료 판정은 아래 tick에서, 정산은 겹친 구간만).
+      // 골든 이벤트 버프(D-4.6 · E-1.4): manaPerSecond에는 생산 버프 배율만 곱해져 있으므로(클릭 버프는
+      // 클릭 파워에만 반영), catch-up/오프라인 공식은 생산 버프를 뺀 baseMps로 전 구간을 계산하고,
+      // 생산 버프 보너스는 "이 tick 구간이 버프 창[start,end]과 실제로 겹친 시간"만큼만 100%로 더한다.
+      // 이렇게 하면 탭을 백그라운드에 두고 복귀해도(큰 elapsed) 버프가 30초 규칙을 넘겨 과지급되지 않는다.
       const mps = s.manaPerSecond
-      const buff = s.activeBuff
-      const buffMult = buff ? buff.mult : 1
-      const baseMps = mps / buffMult
+      const prodBuff = s.activeBuffs.find((b) => b.kind === 'production') ?? null
+      const prodMult = prodBuff ? prodBuff.mult : 1
+      const baseMps = mps / prodMult
       const baseGained =
         elapsedMs <= MAX_TICK_CATCHUP_MS
           ? baseMps * (elapsedMs / 1000)
@@ -432,16 +491,16 @@ export const useGameStore = create<GameState>()((set) => ({
               effectiveOfflineEfficiency(s.stardustUpgrades),
               effectiveOfflineCapMs(s.stardustUpgrades),
             )
-      // 버프 창과 [lastTick, now] 구간의 겹침(ms). 버프 없으면 0.
-      const buffedMs = buff
+      // 생산 버프 창과 [lastTick, now] 구간의 겹침(ms). 버프 없으면 0. (창 길이는 생산 버프 지속시간 상수.)
+      const buffedMs = prodBuff
         ? Math.max(
             0,
-            Math.min(buff.endsAt, now) -
-              Math.max(buff.endsAt - METEOR_BUFF_DURATION_MS, s.lastTick),
+            Math.min(prodBuff.endsAt, now) -
+              Math.max(prodBuff.endsAt - METEOR_BUFF_DURATION_MS, s.lastTick),
           )
         : 0
       // 겹친 시간만큼 (배율-1)배를 base 생산에 얹는다(버프 창은 짧아 캡 무관, 100%).
-      const gained = baseGained + baseMps * (buffMult - 1) * (buffedMs / 1000)
+      const gained = baseGained + baseMps * (prodMult - 1) * (buffedMs / 1000)
       let partial: Partial<GameState> = {
         mana: s.mana + gained,
         lifetimeMana: s.lifetimeMana + gained, // 생산 획득도 누적 마나에 반영
@@ -449,14 +508,17 @@ export const useGameStore = create<GameState>()((set) => ({
         lastTick: now,
         // 플레이 시간은 실제 경과를 그대로 누적한다(오프라인 캡·효율과 무관 — 통계 표시 전용).
         playtimeMs: s.playtimeMs + elapsedMs,
+        // 음소거 중 플레이 시간(숨겨진 업적 '고요한 공방'). 음소거 상태의 경과만 별도 누적한다.
+        mutedPlaytimeMs: s.mutedPlaytimeMs + (s.muted ? elapsedMs : 0),
       }
-      // 유성 버프 만료 판정은 tick에서(now >= endsAt) — 타이머 신뢰 금지 원칙. 백그라운드 복귀 후에도
-      // 첫 tick이 정확히 판정한다. 해제 시 파생값을 buffMult=1로 재계산해 이후 생산이 원복된다.
-      // (이 tick의 gained는 만료 직전 버프값(s.manaPerSecond)으로 계산 — 오버슈트는 한 tick 미만, 단순 유지.)
-      if (s.activeBuff && now >= s.activeBuff.endsAt) {
+      // 버프 만료 판정은 tick에서(now >= endsAt) — 타이머 신뢰 금지 원칙. 백그라운드 복귀 후에도 첫 tick이
+      // 정확히 판정한다. 만료된 버프를 목록에서 지우고 남은 버프 배율로 재계산해 생산·클릭이 원복된다.
+      // (이 tick의 gained는 만료 직전 생산 버프값으로 계산 — 오버슈트는 한 tick 미만, 단순 유지.)
+      const stillActive = s.activeBuffs.filter((b) => now < b.endsAt)
+      if (stillActive.length !== s.activeBuffs.length) {
         partial = {
           ...partial,
-          activeBuff: null,
+          activeBuffs: stillActive,
           ...recalcDerived({
             generators: s.generators,
             upgradeIds: s.upgrades,
@@ -464,7 +526,8 @@ export const useGameStore = create<GameState>()((set) => ({
             stardust: s.stardust,
             achievementCount: s.achievements.length,
             stardustUpgrades: s.stardustUpgrades,
-            buffMult: 1,
+            buffMult: productionBuffMult(stillActive),
+            clickBuffMult: clickBuffMult(stillActive),
           }),
         }
       }
@@ -500,6 +563,11 @@ export const useGameStore = create<GameState>()((set) => ({
         totalLifetimeMana: st.totalLifetimeMana,
         muted: st.muted,
         playtimeMs: st.playtimeMs,
+        // 통계 카운터(v7): 골든 이벤트 클릭·각성 취소·음소거 플레이·드래곤 방문. 각성해도 유지되는 값이라 세이브에서 복원.
+        meteorsClicked: st.meteorsClicked,
+        prestigeCancels: st.prestigeCancels,
+        mutedPlaytimeMs: st.mutedPlaytimeMs,
+        dragonVisits: st.dragonVisits,
         // saveCount는 단조 카운터라 세이브 값에서 이어간다(로드 후 저장이 이어서 +1). deviceId는 이 기기 값 유지.
         saveCount: st.saveCount,
         // 로드 시 토스트는 띄우지 않는다(이미 달성한 것). 스로틀 시각도 초기화.
@@ -512,7 +580,8 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust: st.stardust,
           achievementCount: achievements.length,
           stardustUpgrades,
-          buffMult: buffMultOf(s.activeBuff),
+          buffMult: productionBuffMult(s.activeBuffs),
+          clickBuffMult: clickBuffMult(s.activeBuffs),
         }),
       }
     }),
@@ -589,32 +658,71 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades: s.stardustUpgrades,
-          buffMult: buffMultOf(s.activeBuff),
+          buffMult: productionBuffMult(s.activeBuffs),
+          clickBuffMult: clickBuffMult(s.activeBuffs),
         }),
       })
     }),
 
-  // 유성 버프 발동(D-4.6): activeBuff 설정 + 버프 반영 파생값 재계산 + 획득 토스트 + 파티클 버스트.
-  // 만료는 tick이 판정한다(now >= endsAt). 토스트는 기존 큐 재사용(icon/title/sub 지정).
-  activateMeteorBuff: (now) =>
+  // 각성 확인 모달 취소(E-1.3): prestigeCancels += 1. 숨겨진 업적 '미련의 대가'(3회) 판정을 위해 액션으로 센다.
+  // withAchievements로 감싸 취소 3회째에 즉시 업적을 잡는다(다른 값은 건드리지 않음).
+  cancelPrestige: () => set((s) => withAchievements(s, { prestigeCancels: s.prestigeCancels + 1 })),
+
+  // 골든 이벤트 발동(D-4.6 · E-1.4): kind별로 분기한다. 토스트는 기존 큐 재사용(icon/title/sub 지정).
+  //  - production: 생산 버프(MPS ×) 추가/갱신 → globalMult 재계산.
+  //  - click: 클릭 버프(클릭 파워 ×) 추가/갱신 → clickPower 재계산. 생산 버프와 공존한다.
+  //  - dragon: 버프 없이 현재 MPS × N초(10분치)를 즉시 지급 + dragonVisits += 1.
+  // 모든 종류가 meteorsClicked += 1. 버프 만료는 tick이 판정한다(now >= endsAt, 타이머 신뢰 금지).
+  activateGoldenEvent: (kind, now) =>
     set((s) => {
-      const activeBuff: ActiveBuff = {
-        mult: METEOR_BUFF_MULT,
-        endsAt: now + METEOR_BUFF_DURATION_MS,
+      const icon = goldenEventByKind(kind).icon
+      const meteorsClicked = s.meteorsClicked + 1
+
+      if (kind === 'dragon') {
+        // 즉시 지급: 현재 MPS(생산 버프 반영값) × N초. 버프가 아니라 마나를 바로 준다.
+        const grant = s.manaPerSecond * DRAGON_GRANT_SECONDS
+        return withAchievements(s, {
+          mana: s.mana + grant,
+          lifetimeMana: s.lifetimeMana + grant,
+          totalLifetimeMana: s.totalLifetimeMana + grant,
+          meteorsClicked,
+          dragonVisits: s.dragonVisits + 1,
+          burstKey: s.burstKey + 1,
+          toasts: [
+            ...s.toasts,
+            {
+              id: nextToastId++,
+              name: '',
+              icon,
+              title: STRINGS.toast.dragonTitle,
+              sub: STRINGS.toast.dragonSub(formatNumber(grant)),
+            },
+          ],
+        })
       }
-      return {
-        activeBuff,
+
+      // 버프형(생산/클릭): 종류별 배율·지속시간으로 추가/갱신. 같은 종류면 시간 갱신, 다른 종류면 공존.
+      const isProduction = kind === 'production'
+      const buff: Buff = isProduction
+        ? { kind: 'production', mult: METEOR_BUFF_MULT, endsAt: now + METEOR_BUFF_DURATION_MS }
+        : { kind: 'click', mult: CLICK_BUFF_MULT, endsAt: now + CLICK_BUFF_DURATION_MS }
+      const activeBuffs = addBuff(s.activeBuffs, buff)
+      return withAchievements(s, {
+        activeBuffs,
+        meteorsClicked,
+        burstKey: s.burstKey + 1, // 화려한 획득 이펙트(파티클 버스트) 트리거
         toasts: [
           ...s.toasts,
           {
             id: nextToastId++,
             name: '',
-            icon: '☄️',
-            title: STRINGS.toast.meteorTitle,
-            sub: STRINGS.toast.meteorSub(METEOR_BUFF_DURATION_MS / 1000, METEOR_BUFF_MULT),
+            icon,
+            title: isProduction ? STRINGS.toast.meteorTitle : STRINGS.toast.clickStormTitle,
+            sub: isProduction
+              ? STRINGS.toast.meteorSub(METEOR_BUFF_DURATION_MS / 1000, METEOR_BUFF_MULT)
+              : STRINGS.toast.clickStormSub(CLICK_BUFF_DURATION_MS / 1000, CLICK_BUFF_MULT),
           },
         ],
-        burstKey: s.burstKey + 1, // 화려한 획득 이펙트(파티클 버스트) 트리거
         ...recalcDerived({
           generators: s.generators,
           upgradeIds: s.upgrades,
@@ -622,9 +730,10 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust: s.stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades: s.stardustUpgrades,
-          buffMult: activeBuff.mult,
+          buffMult: productionBuffMult(activeBuffs),
+          clickBuffMult: clickBuffMult(activeBuffs),
         }),
-      }
+      })
     }),
 
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useGameStore } from '../store/gameStore.ts'
 import { formatNumber } from '../utils/format.ts'
 import { saveNow } from '../engine/autosave.ts'
@@ -36,24 +37,33 @@ function HeaderMana() {
   )
 }
 
-// D-4.6 유성 버프 배지 — 버프 중 MPS 옆에 "×N (남은 M초)" 표시. 남은 시간은 tick 구독이 아니라
-// 1s 로컬 인터벌로 갱신(표시 전용). activeBuff는 발동/만료 시에만 참조가 바뀌므로 구독이 가볍다.
-function MeteorBadge() {
-  const activeBuff = useGameStore((s) => s.activeBuff)
-  const [remaining, setRemaining] = useState(0)
+// D-4.6 · E-1.4 골든 이벤트 버프 배지 — 버프 중 MPS 옆에 종류별 "×N (남은 M초)" 표시.
+// 생산·클릭 버프가 공존할 수 있으므로 활성 버프마다 하나씩 렌더한다. 남은 시간은 tick 구독이 아니라
+// 1s 로컬 인터벌로 갱신(표시 전용). activeBuffs는 발동/만료 시에만 참조가 바뀌므로 구독이 가볍다.
+function BuffBadges() {
+  const activeBuffs = useGameStore(useShallow((s) => s.activeBuffs))
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!activeBuff) return
-    const update = () =>
-      setRemaining(Math.max(0, Math.ceil((activeBuff.endsAt - Date.now()) / 1000)))
-    update()
-    const iv = setInterval(update, 1000)
+    if (activeBuffs.length === 0) return
+    const iv = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(iv)
-  }, [activeBuff])
-  if (!activeBuff || remaining <= 0) return null
+  }, [activeBuffs.length])
   return (
-    <span className="meteor-badge" title={STRINGS.header.meteorBadgeTitle}>
-      {STRINGS.header.meteorBadge(activeBuff.mult, remaining)}
-    </span>
+    <>
+      {activeBuffs.map((buff) => {
+        const remaining = Math.max(0, Math.ceil((buff.endsAt - now) / 1000))
+        if (remaining <= 0) return null
+        const title =
+          buff.kind === 'production'
+            ? STRINGS.header.meteorBadgeTitle
+            : STRINGS.header.clickBuffBadgeTitle
+        return (
+          <span key={buff.kind} className="meteor-badge" title={title}>
+            {STRINGS.header.meteorBadge(buff.mult, remaining)}
+          </span>
+        )
+      })}
+    </>
   )
 }
 
@@ -86,7 +96,7 @@ export default function Header() {
       <div className="header-stats">
         <HeaderMana />
         <span className="header-mps">{STRINGS.header.mps(mpsText)}</span>
-        <MeteorBadge />
+        <BuffBadges />
         {showStardust && (
           <button
             type="button"

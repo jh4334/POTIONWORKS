@@ -111,6 +111,15 @@ const SYNERGY_UPGRADES: UpgradeDef[] = [
     unlock: { kind: 'ownedCount', generatorId: 'herbGarden', minOwned: 25 },
     effect: { kind: 'synergy', sourceId: 'herbGarden', targetId: 'runeCircle', percentPerSource: 0.5 },
   },
+  // T7~T8 시너지(E-1.1): 현자의 탑 1개당 시공 균열 생산 +2%. 후반 티어 교차 배율.
+  {
+    id: 'synergy-sageTower-riftGate',
+    name: '균열의 인도자',
+    desc: '현자의 탑 1개당 시공 균열 생산 +2%',
+    cost: 500_000_000,
+    unlock: { kind: 'ownedCount', generatorId: 'sageTower', minOwned: 10 },
+    effect: { kind: 'synergy', sourceId: 'sageTower', targetId: 'riftGate', percentPerSource: 2 },
+  },
 ]
 
 export const UPGRADES: UpgradeDef[] = [

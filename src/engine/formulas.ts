@@ -197,33 +197,31 @@ export function composeGlobalMult({
 }
 
 // 업적 달성 판정에 필요한 통계 스냅샷(순수 함수 입력).
+// E-1.3에서 조건 종류가 늘며 필드가 확장됐다 — 모든 조건 kind가 여기서 값을 읽는다(exhaustive switch로 강제).
 export interface AchievementStats {
   totalClicks: number
   generators: Record<string, number>
   totalLifetimeMana: number
   totalPrestiges: number
   mps: number
+  stardust: number // 현재 보유 스타더스트
+  playtimeMs: number // 총 플레이 시간(ms)
+  meteorsClicked: number // 골든 이벤트 클릭 누적
+  prestigeCancels: number // 각성 확인 취소 누적(숨김)
+  mutedPlaytimeMs: number // 음소거 중 플레이 시간(ms, 숨김)
+  clickCombo: number // 현재 클릭 콤보(숨김)
+  dragonVisits: number // 드래곤 방문 누적(숨김)
 }
 
 // 업적 달성 여부(순수). 조건 종류별로 통계와 비교한다.
+// exhaustive switch(D-5.1): 새 AchievementCondition kind 추가 시 컴파일 에러로 누락을 잡는다.
 export function isAchievementUnlocked(def: AchievementDef, stats: AchievementStats): boolean {
-  const c = def.condition
-  switch (c.kind) {
-    case 'clicks':
-      return stats.totalClicks >= c.min
-    case 'generatorCount':
-      return (stats.generators[c.generatorId] ?? 0) >= c.min
-    case 'lifetimeMana':
-      return stats.totalLifetimeMana >= c.min
-    case 'prestiges':
-      return stats.totalPrestiges >= c.min
-    case 'mps':
-      return stats.mps >= c.min
-  }
+  return achievementCurrent(def, stats) >= def.condition.min
 }
 
 // 잠긴 업적의 현재 진행값(조건 종류별 통계 스냅샷에서 파생). 목표값은 def.condition.min.
 // AchievementsModal의 "723 / 1.00K" 진행도·진행 바에 쓰는 순수 함수.
+// isAchievementUnlocked도 이 값을 min과 비교하므로, 조건 kind 추가는 이 한 곳만 확장하면 된다.
 export function achievementCurrent(def: AchievementDef, stats: AchievementStats): number {
   const c = def.condition
   switch (c.kind) {
@@ -237,17 +235,39 @@ export function achievementCurrent(def: AchievementDef, stats: AchievementStats)
       return stats.totalPrestiges
     case 'mps':
       return stats.mps
+    case 'stardust':
+      return stats.stardust
+    case 'playtime':
+      return stats.playtimeMs
+    case 'meteorsClicked':
+      return stats.meteorsClicked
+    case 'prestigeCancels':
+      return stats.prestigeCancels
+    case 'mutedPlaytime':
+      return stats.mutedPlaytimeMs
+    case 'clickCombo':
+      return stats.clickCombo
+    case 'dragonVisits':
+      return stats.dragonVisits
+    default: {
+      const _exhaustive: never = c
+      void _exhaustive
+      return 0
+    }
   }
 }
 
-// 클릭당 획득량 = 기본 클릭력 + MPS × (clickMpsPercent 합 / 100).
+// 클릭당 획득량 = (기본 클릭력 + MPS × (clickMpsPercent 합 / 100)) × 클릭 버프 배율.
 // 업그레이드가 없으면 basePower 그대로. extraPercent는 업그레이드 외 clickMps 퍼센트 합
 // (상점 '공명 증폭' 등) — 기존 업그레이드 퍼센트와 동일 경로에 합류시킨다(D-3.1).
+// buffMult(E-1.4 마나 폭풍)는 최종 클릭 파워에 곱하는 클릭 버프 배율 — 생산(MPS) 배율과 별개 경로다
+//   (생산 버프는 mps에 이미 반영돼 들어오고, 클릭 버프는 여기서 최종값에 곱한다). 미지정=1(버프 없음).
 export function clickPower(
   basePower: number,
   mps: number,
   purchasedUpgrades: UpgradeDef[] = [],
   extraPercent: number = 0,
+  buffMult: number = 1,
 ): number {
   let percent = extraPercent
   for (const u of purchasedUpgrades) {
@@ -266,7 +286,7 @@ export function clickPower(
       }
     }
   }
-  return basePower + (mps * percent) / 100
+  return (basePower + (mps * percent) / 100) * buffMult
 }
 
 // --- 스타더스트 상점 (D-3.1) ---

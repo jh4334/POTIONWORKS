@@ -24,7 +24,9 @@ import type { BuyAmount } from '../store/gameStore.ts'
 // v4(D-2.3): 플레이 시간(playtimeMs) 추가 — 통계 패널용 실제 경과 누적(캡 무관).
 // v5(D-3): 스타더스트 상점 레벨(stardustUpgrades) 추가 — 각성해도 유지되는 영구 강화 트랙.
 // v6(D-5.3): M9 충돌 해소 메타(deviceId·saveCount) 추가 — 클라이언트 시계 대신 기기·단조 카운터로 판정.
-export const SAVE_VERSION = 6
+// v7(E-1.3): 통계 카운터 4종 추가 — meteorsClicked(골든 이벤트 클릭), prestigeCancels(각성 취소),
+//   mutedPlaytimeMs(음소거 플레이), dragonVisits(드래곤 방문). 신규 업적(숨김 포함) 조건의 진실.
+export const SAVE_VERSION = 7
 
 // 직렬화 대상(진실만). 파생값은 제외.
 export interface SaveState {
@@ -52,6 +54,11 @@ export interface SaveState {
   // saveCount=저장마다 +1인 단조 카운터. 두 값으로 "어느 기기의 몇 번째 저장인지"를 시계 없이 판정한다.
   deviceId: string
   saveCount: number
+  // 통계 카운터(v7, E-1.3). 각성해도 유지되는 누적값 — 신규/숨겨진 업적 조건의 진실.
+  meteorsClicked: number // 골든 이벤트 클릭 누적
+  prestigeCancels: number // 각성 확인 취소 누적(숨김 업적)
+  mutedPlaytimeMs: number // 음소거 중 플레이 시간(ms, 숨김 업적)
+  dragonVisits: number // 드래곤 방문 누적(숨김 업적)
 }
 
 // 이 기기의 영속 식별자(D-5.3). localStorage 별도 키에서 읽고, 없으면 UUID를 생성해 저장한다.
@@ -125,6 +132,11 @@ export function toSaveData(state: SaveState, now: number = Date.now()): SaveData
       // deviceId=저장 시점의 이 기기 값(진실 기록), saveCount=스토어의 단조 카운터 현재값.
       deviceId: state.deviceId,
       saveCount: state.saveCount,
+      // 통계 카운터(v7).
+      meteorsClicked: state.meteorsClicked,
+      prestigeCancels: state.prestigeCancels,
+      mutedPlaytimeMs: state.mutedPlaytimeMs,
+      dragonVisits: state.dragonVisits,
     },
   }
 }
@@ -221,6 +233,7 @@ function normalizeAchievements(v: unknown): string[] {
 // v3→v4: playtimeMs가 없으므로 0으로 초기화한다.
 // v4→v5: stardustUpgrades가 없으므로 빈 객체({})로 초기화한다.
 // v5→v6: deviceId는 현재 기기값(getDeviceId), saveCount=0으로 초기화한다(단조 카운터 출발점).
+// v6→v7: 통계 카운터(meteorsClicked/prestigeCancels/mutedPlaytimeMs/dragonVisits)가 없으므로 0으로 초기화한다.
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
     console.warn(STRINGS.log.save.notObject)
@@ -283,6 +296,14 @@ export function migrate(raw: unknown): SaveData | null {
       : getDeviceId()
   const saveCount = isV6Plus ? normalizeNonNegInt(s.saveCount, 0) : 0
 
+  // v6 이하엔 통계 카운터가 없다 → 모두 0. v7 이상은 검증해 채택(누락·손상·음수·NaN은 0).
+  // meteorsClicked/prestigeCancels/dragonVisits는 정수 카운터, mutedPlaytimeMs는 ms(정수 아님 허용).
+  const isV7Plus = raw.version >= 7
+  const meteorsClicked = isV7Plus ? normalizeNonNegInt(s.meteorsClicked, 0) : 0
+  const prestigeCancels = isV7Plus ? normalizeNonNegInt(s.prestigeCancels, 0) : 0
+  const mutedPlaytimeMs = isV7Plus ? normalizeNonNeg(s.mutedPlaytimeMs, 0) : 0
+  const dragonVisits = isV7Plus ? normalizeNonNegInt(s.dragonVisits, 0) : 0
+
   return {
     version: SAVE_VERSION,
     savedAt: raw.savedAt,
@@ -304,6 +325,10 @@ export function migrate(raw: unknown): SaveData | null {
       stardustUpgrades,
       deviceId,
       saveCount,
+      meteorsClicked,
+      prestigeCancels,
+      mutedPlaytimeMs,
+      dragonVisits,
     },
   }
 }
@@ -323,6 +348,10 @@ function hasFiniteNumbers(state: SaveState): boolean {
     state.totalLifetimeMana,
     state.playtimeMs,
     state.saveCount,
+    state.meteorsClicked,
+    state.prestigeCancels,
+    state.mutedPlaytimeMs,
+    state.dragonVisits,
   ]
   for (const n of scalars) {
     if (typeof n !== 'number' || !Number.isFinite(n)) return false
