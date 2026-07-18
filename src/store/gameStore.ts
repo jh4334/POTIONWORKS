@@ -139,6 +139,9 @@ export interface GameState {
   // 볼륨(E-3.3, 세이브 v10). 0~1. muted(v3~v9 불리언)를 대체 — muted true→0, false→기본(0.7)로 이전.
   // 사운드 재생 게인에 sound.setVolume으로 반영. volume===0이 곧 '음소거'(숨김 업적 '고요한 공방' 기준).
   volume: number
+  // 배경음 토글(E-4.4, 세이브 v11). 효과음 볼륨과 독립 — 앰비언트 보글보글 루프를 켜고 끈다.
+  // App이 (게임 화면 · volume>0 · ambientOn)일 때만 sound.startAmbient를 호출한다.
+  ambientOn: boolean
   // 숫자 표기(E-3.3, 세이브 v10). formatNumber 모듈 전역(setNotation)에 App이 동기화한다.
   // 스토어 값으로도 두어 셀렉터가 참조·리렌더할 수 있게 한다(표시 설정이지만 세이브 대상).
   numberNotation: NumberNotation
@@ -257,6 +260,8 @@ export interface GameState {
   setNumberNotation: (n: NumberNotation) => void
   setEffects: (mode: EffectsMode) => void
   setFontScale: (scale: number) => void
+  // 배경음 토글(E-4.4). 세이브 대상. App이 이 값을 구독해 앰비언트를 시작/정지한다.
+  setAmbientOn: (on: boolean) => void
   // 저장 단조 카운터 증가(D-5.3). saveNow가 직렬화 직전 호출해 저장마다 +1을 보장한다(단조 증가).
   bumpSaveCount: () => void
   // 디버그 전용(debug/cheats.ts): 마나 +n (누적 마나 통계도 함께 증가).
@@ -301,6 +306,7 @@ function createInitialState() {
     totalClicks: 0,
     totalLifetimeMana: 0,
     volume: DEFAULT_VOLUME,
+    ambientOn: true,
     numberNotation: 'suffix' as NumberNotation,
     effects: 'full' as EffectsMode,
     fontScale: 1,
@@ -445,7 +451,7 @@ function resolveTimedChallenge(s: {
   const active = s.activeChallenge
   if (!active) return null
   const def = challengeById(active.id)
-  if (!def || def.constraint !== 'timed') return null
+  if (def?.constraint !== 'timed') return null
   if (s.lifetimeMana < PRESTIGE_THRESHOLD) return null
   const withinTime = Date.now() - active.startedAt <= (def.timeLimitMs ?? 0)
   if (withinTime) {
@@ -736,6 +742,7 @@ export const useGameStore = create<GameState>()((set) => ({
         totalClicks: st.totalClicks,
         totalLifetimeMana: st.totalLifetimeMana,
         volume: st.volume,
+        ambientOn: st.ambientOn,
         numberNotation: st.numberNotation,
         effects: st.effects,
         fontScale: st.fontScale,
@@ -1091,8 +1098,18 @@ export const useGameStore = create<GameState>()((set) => ({
       // 버프형(생산/클릭): 종류별 배율·지속시간으로 추가/갱신. 같은 종류면 시간 갱신, 다른 종류면 공존.
       const isProduction = kind === 'production'
       const buff: Buff = isProduction
-        ? { kind: 'production', mult: METEOR_BUFF_MULT, startsAt: now, endsAt: now + METEOR_BUFF_DURATION_MS }
-        : { kind: 'click', mult: CLICK_BUFF_MULT, startsAt: now, endsAt: now + CLICK_BUFF_DURATION_MS }
+        ? {
+            kind: 'production',
+            mult: METEOR_BUFF_MULT,
+            startsAt: now,
+            endsAt: now + METEOR_BUFF_DURATION_MS,
+          }
+        : {
+            kind: 'click',
+            mult: CLICK_BUFF_MULT,
+            startsAt: now,
+            endsAt: now + CLICK_BUFF_DURATION_MS,
+          }
       const activeBuffs = addBuff(s.activeBuffs, buff)
       return withAchievements(s, {
         activeBuffs,
@@ -1132,6 +1149,7 @@ export const useGameStore = create<GameState>()((set) => ({
   setNumberNotation: (n) => set({ numberNotation: n }),
   setEffects: (mode) => set({ effects: mode }),
   setFontScale: (scale) => set({ fontScale: scale }),
+  setAmbientOn: (on) => set({ ambientOn: on }),
 
   // 저장마다 +1(단조 증가). saveNow가 직렬화 직전 호출 → 세이브에 이번 저장의 카운터가 담긴다.
   bumpSaveCount: () => set((s) => ({ saveCount: s.saveCount + 1 })),

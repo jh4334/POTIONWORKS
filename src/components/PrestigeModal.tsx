@@ -89,7 +89,9 @@ export default function PrestigeModal() {
   // 진행도 표시용: 정수 내림 후 포맷한 문자열만 구독(소수점 변화로 리렌더되지 않도록).
   const progressText = useGameStore((s) => formatNumber(Math.floor(s.lifetimeMana)))
   // 진행 게이지 채움 정수 퍼센트(0~100). 1%p 단위로만 바뀌므로 tick마다 리렌더되지 않는다.
-  const pct = useGameStore((s) => Math.min(100, Math.floor((s.lifetimeMana / PRESTIGE_THRESHOLD) * 100)))
+  const pct = useGameStore((s) =>
+    Math.min(100, Math.floor((s.lifetimeMana / PRESTIGE_THRESHOLD) * 100)),
+  )
   // 게이지 노출 여부(힌트 임계 도달). 임계 전에는 게이지 자체를 숨긴다.
   const showHint = useGameStore((s) => s.lifetimeMana >= PRESTIGE_HINT_THRESHOLD)
   // 임계 도달 불리언: 임계 전후로만 값이 바뀜.
@@ -149,9 +151,7 @@ export default function PrestigeModal() {
           <button type="button" className="prestige-button" onClick={() => setShowConfirm(true)}>
             {STRINGS.prestige.awakenButton(formatNumber(gain))}
           </button>
-          <div className="prestige-next">
-            {STRINGS.prestige.nextLine(progressText, nextAtText)}
-          </div>
+          <div className="prestige-next">{STRINGS.prestige.nextLine(progressText, nextAtText)}</div>
         </>
       ) : (
         showHint && (
@@ -195,7 +195,9 @@ export default function PrestigeModal() {
         <Modal title={STRINGS.prestige.confirmTitle} onClose={handleCancel}>
           <p className="modal-body">
             {STRINGS.prestige.confirmLead}{' '}
-            <strong className="offline-amount">{STRINGS.prestige.confirmGain(formatNumber(gain))}</strong>
+            <strong className="offline-amount">
+              {STRINGS.prestige.confirmGain(formatNumber(gain))}
+            </strong>
             {isFirstPrestige && STRINGS.prestige.firstBonus(FIRST_PRESTIGE_BONUS)}
           </p>
           <p className="modal-body">
@@ -206,9 +208,7 @@ export default function PrestigeModal() {
               bonusPercent(after),
             )}
           </p>
-          <p className="modal-sub">
-            {STRINGS.prestige.confirmKeep}
-          </p>
+          <p className="modal-sub">{STRINGS.prestige.confirmKeep}</p>
 
           {/* E-2.2 챌린지와 함께 각성: 미완료 챌린지 선택(선택 안 함=일반 각성), 완료는 ✅ 재선택 불가. */}
           <div className="challenge-picker">

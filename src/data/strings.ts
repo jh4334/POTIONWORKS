@@ -41,7 +41,8 @@ export const STRINGS = {
     unlockCost: (v: string) => `해금 비용 ${v} 💧`,
     perUnit: (v: string) => `개당 ${v}/s`,
     total: (total: string, percent: string) => `총 ${total}/s (전체의 ${percent}%)`,
-    buyAria: (name: string, count: number, cost: string) => `${name} ×${count} 구매, 비용 ${cost} 마나`,
+    buyAria: (name: string, count: number, cost: string) =>
+      `${name} ×${count} 구매, 비용 ${cost} 마나`,
     buyDeltaTitle: (v: string) => `구매 시 +${v}/s`,
     delta: (v: string) => `+${v}/s`,
   },
@@ -129,6 +130,9 @@ export const STRINGS = {
     volume: '볼륨',
     mute: '음소거',
     volumeValue: (pct: number) => `${pct}%`,
+    // E-4.4 배경음(앰비언트) 토글 — 효과음 볼륨과 독립.
+    ambient: '배경음',
+    ambientOn: '🫧 배경음 켜기',
     notation: '숫자 표기',
     notationSuffix: '1.2M',
     notationComma: '1,200,000',

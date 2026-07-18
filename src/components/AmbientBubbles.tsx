@@ -5,6 +5,7 @@ export default function AmbientBubbles() {
   return (
     <div className="ambient-bubbles" aria-hidden="true">
       {Array.from({ length: 5 }, (_, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: 고정 길이·불변 순서의 동일 파티클 — 인덱스 키가 안전·적절하다.
         <span key={i} className="ambient-bubble" />
       ))}
     </div>

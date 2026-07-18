@@ -15,7 +15,9 @@ interface Props {
 type SaveFilePicker = (opts: {
   suggestedName?: string
   types?: { description: string; accept: Record<string, string[]> }[]
-}) => Promise<{ createWritable: () => Promise<{ write: (d: string) => Promise<void>; close: () => Promise<void> }> }>
+}) => Promise<{
+  createWritable: () => Promise<{ write: (d: string) => Promise<void>; close: () => Promise<void> }>
+}>
 type OpenFilePicker = (opts: {
   multiple?: boolean
   types?: { description: string; accept: Record<string, string[]> }[]
@@ -143,6 +145,7 @@ export default function SaveModal({ onClose }: Props) {
 
   return (
     <Modal title={STRINGS.save.title} onClose={onClose}>
+      {/* biome-ignore lint/a11y/noLabelWithoutControl: 아래 textarea의 캡션 라벨 — htmlFor 연결은 마크업 변경이라 스타일 패스 범위 밖. */}
       <label className="modal-label">{STRINGS.save.exportLabel}</label>
       <textarea className="modal-textarea" readOnly value={exportStr} rows={3} />
       <div className="modal-actions modal-actions--left">
@@ -168,6 +171,7 @@ export default function SaveModal({ onClose }: Props) {
         />
       </div>
 
+      {/* biome-ignore lint/a11y/noLabelWithoutControl: 아래 textarea의 캡션 라벨 — htmlFor 연결은 마크업 변경이라 스타일 패스 범위 밖. */}
       <label className="modal-label">{STRINGS.save.importLabel}</label>
       <textarea
         className="modal-textarea"

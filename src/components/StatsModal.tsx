@@ -70,8 +70,14 @@ export default function StatsModal({ onClose }: Props) {
 
       <p className="stats-bonus-title">{STRINGS.stats.bonusTitle}</p>
       <div className="stats-grid">
-        <Row label={STRINGS.stats.bonusAchievement(s.achievementCount)} value={`+${achievementBonus}%`} />
-        <Row label={STRINGS.stats.bonusStardust(formatNumber(s.stardust))} value={`+${stardustBonus}%`} />
+        <Row
+          label={STRINGS.stats.bonusAchievement(s.achievementCount)}
+          value={`+${achievementBonus}%`}
+        />
+        <Row
+          label={STRINGS.stats.bonusStardust(formatNumber(s.stardust))}
+          value={`+${stardustBonus}%`}
+        />
       </div>
 
       <div className="modal-actions">

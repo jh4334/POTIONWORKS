@@ -10,7 +10,7 @@ const EMOJIS = ['✨', '⭐', '🌟', '💫']
 
 interface Burst {
   key: number
-  particles: { dx: number; dy: number; emoji: string; rot: number }[]
+  particles: { id: number; dx: number; dy: number; emoji: string; rot: number }[]
 }
 
 // 방사형으로 균등 분포 + 약간의 랜덤 거리. 미리 계산해 렌더 중 재계산 없음.
@@ -19,6 +19,7 @@ function makeParticles() {
     const angle = (i / PARTICLE_COUNT) * Math.PI * 2 + Math.random() * 0.4
     const dist = 80 + Math.random() * 60
     return {
+      id: i, // 버스트 내 고정 슬롯 id(재정렬 없음) — 인덱스 대신 안정 키로 사용.
       dx: Math.cos(angle) * dist,
       dy: Math.sin(angle) * dist,
       emoji: EMOJIS[i % EMOJIS.length],
@@ -58,9 +59,9 @@ export default function BurstEffect() {
     <div className="burst-layer" aria-hidden="true">
       {bursts.map((b) => (
         <div key={b.key} className="burst-origin">
-          {b.particles.map((p, i) => (
+          {b.particles.map((p) => (
             <span
-              key={i}
+              key={p.id}
               className="burst-particle"
               style={
                 {

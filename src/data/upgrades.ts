@@ -109,7 +109,12 @@ const SYNERGY_UPGRADES: UpgradeDef[] = [
     desc: '허브 정원 1개당 마법진 생산 +0.5%',
     cost: 60_000,
     unlock: { kind: 'ownedCount', generatorId: 'herbGarden', minOwned: 25 },
-    effect: { kind: 'synergy', sourceId: 'herbGarden', targetId: 'runeCircle', percentPerSource: 0.5 },
+    effect: {
+      kind: 'synergy',
+      sourceId: 'herbGarden',
+      targetId: 'runeCircle',
+      percentPerSource: 0.5,
+    },
   },
   // T7~T8 시너지(E-1.1): 현자의 탑 1개당 시공 균열 생산 +2%. 후반 티어 교차 배율.
   {
@@ -130,9 +135,7 @@ export const UPGRADES: UpgradeDef[] = [
 ]
 
 // id → 정의 조회용(스토어가 구매 id 목록을 정의로 해석할 때 사용).
-const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(
-  UPGRADES.map((u) => [u.id, u]),
-)
+const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(UPGRADES.map((u) => [u.id, u]))
 
 // 구매한 id 목록을 정의 배열로 해석. 알 수 없는 id는 무시(세이브 마이그레이션 안전).
 export function resolveUpgrades(ids: string[]): UpgradeDef[] {

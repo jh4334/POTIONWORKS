@@ -132,7 +132,7 @@
 - [x] E-3.3 설정 확장: 볼륨 슬라이더, 숫자 표기 전환, 이펙트 강도, 글자 크기 ✅
 
 ## E-4. 품질·부채
-- [ ] E-4.1 biome(lint+format) + CI 게이트
-- [ ] E-4.2 E2E 스모크(Playwright) CI 편입
+- [x] E-4.1 biome(lint+format) + CI 게이트 ✅
+- [x] E-4.2 E2E 스모크(Playwright) CI 편입 ✅
 - [x] E-4.3 i18n 문자열 추출(data/strings.ts 키, 한국어 단일 로케일) ← **최우선(E-1 선행)** ✅
-- [ ] E-4.4 사운드 앰비언트(Web Audio 합성 보글보글 루프)
+- [x] E-4.4 사운드 앰비언트(Web Audio 합성 보글보글 루프) ✅

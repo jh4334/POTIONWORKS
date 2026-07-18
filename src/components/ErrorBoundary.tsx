@@ -61,9 +61,7 @@ export default class ErrorBoundary extends Component<Props, State> {
           <h2 className="modal-title" id="error-title">
             {STRINGS.error.title}
           </h2>
-          <p className="modal-body">
-            {STRINGS.error.body}
-          </p>
+          <p className="modal-body">{STRINGS.error.body}</p>
 
           <label className="modal-label" htmlFor="error-save">
             {STRINGS.error.saveLabel}

@@ -16,7 +16,11 @@ function installLocalStorage(): void {
       return map.size
     },
   }
-  Object.defineProperty(globalThis, 'localStorage', { value: stub, configurable: true, writable: true })
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: stub,
+    configurable: true,
+    writable: true,
+  })
 }
 
 // listSlots 요약 검증용 raw 세이브 JSON(migrate가 정규화해 읽는다).
@@ -24,7 +28,14 @@ function rawSave(savedAt: number, totalLifetimeMana: number, playtimeMs: number)
   return JSON.stringify({
     version: 10,
     savedAt,
-    state: { mana: 0, basePower: 1, lastTick: savedAt, buyAmount: 1, totalLifetimeMana, playtimeMs },
+    state: {
+      mana: 0,
+      basePower: 1,
+      lastTick: savedAt,
+      buyAmount: 1,
+      totalLifetimeMana,
+      playtimeMs,
+    },
   })
 }
 

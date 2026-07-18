@@ -73,7 +73,7 @@ describe('formatNumber', () => {
 })
 
 describe('formatNumber notation (E-3.3)', () => {
-  it("comma 인자: 천 단위 구분(1e15 미만)", () => {
+  it('comma 인자: 천 단위 구분(1e15 미만)', () => {
     expect(formatNumber(1234, 'comma')).toBe('1,234')
     expect(formatNumber(1_000_000, 'comma')).toBe('1,000,000')
     expect(formatNumber(999, 'comma')).toBe('999')

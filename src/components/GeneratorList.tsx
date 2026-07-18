@@ -27,7 +27,12 @@ export default function GeneratorList() {
       <div className="generator-list-head">
         <h2 className="generator-list-title">{STRINGS.generator.listTitle}</h2>
         {showBuyToggle && (
-          <div className="buy-amount-toggle" role="group" aria-label={STRINGS.generator.buyAmountAria}>
+          // biome-ignore lint/a11y/useSemanticElements: 버튼 묶음의 ARIA group 패턴 — fieldset로 바꾸면 레이아웃/스타일이 달라진다(의도된 role 사용).
+          <div
+            className="buy-amount-toggle"
+            role="group"
+            aria-label={STRINGS.generator.buyAmountAria}
+          >
             {BUY_OPTIONS.map((opt) => (
               <button
                 key={String(opt)}

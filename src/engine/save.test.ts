@@ -19,11 +19,7 @@ import { STARDUST_UPGRADES } from '../data/stardustShop.ts'
 import { POTIONS } from '../data/potions.ts'
 import { CHALLENGES } from '../data/challenges.ts'
 import { useGameStore } from '../store/gameStore.ts'
-import {
-  GENERATOR_MAX,
-  INITIAL_CLICK_POWER,
-  DEFAULT_VOLUME,
-} from '../data/config.ts'
+import { GENERATOR_MAX, INITIAL_CLICK_POWER, DEFAULT_VOLUME } from '../data/config.ts'
 
 const KNOWN_GEN = GENERATORS[0].id // 'apprentice'
 const KNOWN_UP = UPGRADES[0].id // 'apprentice-x2-10'
@@ -51,6 +47,7 @@ function makeState(): SaveState {
     totalClicks: 321,
     totalLifetimeMana: 98765.4,
     volume: 0.3,
+    ambientOn: false,
     numberNotation: 'comma',
     effects: 'reduced',
     fontScale: 1.15,
@@ -468,7 +465,12 @@ describe('migrate', () => {
     const nanReady = migrate({
       version: 8,
       savedAt: 1,
-      state: { ...validState(), deviceId: 'dev-x', saveCount: 3, brewing: { potionId: KNOWN_POTION, readyAt: NaN } },
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        brewing: { potionId: KNOWN_POTION, readyAt: NaN },
+      },
     })
     expect(nanReady!.state.brewing).toBeNull()
   })
@@ -592,6 +594,51 @@ describe('migrate', () => {
     // volume 누락/NaN → 기본
     const missing = migrate({ version: 10, savedAt: 1, state: { ...base, volume: NaN } })
     expect(missing!.state.volume).toBe(DEFAULT_VOLUME)
+  })
+
+  it('v10→v11: ambientOn 필드가 없으면 true(배경음 켜짐)로 초기화', () => {
+    const base = {
+      ...validState(),
+      deviceId: 'dev-x',
+      saveCount: 3,
+      brewing: null,
+      readyPotion: null,
+      potionsBrewed: 0,
+      activeChallenge: null,
+      completedChallenges: [],
+      volume: 0.5,
+      numberNotation: 'suffix',
+      effects: 'full',
+      fontScale: 1,
+    }
+    const out = migrate({ version: 10, savedAt: FIXED_NOW, state: base })
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 11로 승격
+    expect(out!.state.ambientOn).toBe(true)
+  })
+
+  it('v11 세이브는 ambientOn을 채택(false 유지, 손상값은 true 기본)', () => {
+    const base = {
+      ...validState(),
+      deviceId: 'dev-x',
+      saveCount: 3,
+      brewing: null,
+      readyPotion: null,
+      potionsBrewed: 0,
+      activeChallenge: null,
+      completedChallenges: [],
+      volume: 0.5,
+      numberNotation: 'suffix',
+      effects: 'full',
+      fontScale: 1,
+    }
+    const off = migrate({ version: 11, savedAt: FIXED_NOW, state: { ...base, ambientOn: false } })
+    expect(off!.state.ambientOn).toBe(false) // 명시적 false 유지
+    const on = migrate({ version: 11, savedAt: FIXED_NOW, state: { ...base, ambientOn: true } })
+    expect(on!.state.ambientOn).toBe(true)
+    // 손상(불리언 아님) → 기본 true.
+    const bad = migrate({ version: 11, savedAt: 1, state: { ...base, ambientOn: 'nope' } })
+    expect(bad!.state.ambientOn).toBe(true)
   })
 
   it('v5 세이브는 stardustUpgrades를 채택(미지 id 제거·손상값 제거·maxLevel 클램프)', () => {
@@ -732,7 +779,11 @@ function installLocalStorage(): void {
       return map.size
     },
   }
-  Object.defineProperty(globalThis, 'localStorage', { value: stub, configurable: true, writable: true })
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: stub,
+    configurable: true,
+    writable: true,
+  })
 }
 
 describe('loadFromLocalResult 손상 보존(D-1.1)', () => {

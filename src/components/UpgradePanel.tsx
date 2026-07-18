@@ -25,7 +25,9 @@ export default function UpgradePanel() {
   )
   // 챌린지 '금욕의 공방'(no-upgrade) 진행 중이면 구매가 막힌다 — 안내를 띄우고 카드는 숨긴다(E-2.2).
   const upgradeBlocked = useGameStore(
-    (s) => s.activeChallenge !== null && challengeById(s.activeChallenge.id)?.constraint === 'no-upgrade',
+    (s) =>
+      s.activeChallenge !== null &&
+      challengeById(s.activeChallenge.id)?.constraint === 'no-upgrade',
   )
 
   if (upgradeBlocked) {

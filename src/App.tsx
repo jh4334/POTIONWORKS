@@ -15,7 +15,7 @@ import { startTickLoop } from './engine/tick.ts'
 import { startAutosave, hadSaveOnLoad, saveNow } from './engine/autosave.ts'
 import { consumeEnterFlag } from './engine/slots.ts'
 import { useGameStore } from './store/gameStore.ts'
-import { setVolume } from './engine/sound.ts'
+import { setVolume, startAmbient, stopAmbient } from './engine/sound.ts'
 import { setNotation } from './utils/format.ts'
 import { STRINGS } from './data/strings.ts'
 
@@ -58,6 +58,17 @@ export default function App() {
   // 리로드 후 곧장 게임으로 들어간다(타이틀 스킵). 초기값을 마운트 시 1회 고정한다(E-3.2).
   const [showTitle, setShowTitle] = useState(() => !hadSaveOnLoad() && !consumeEnterFlag())
 
+  // 앰비언트 배경음(E-4.4) — 게임 화면(타이틀 제외) · volume>0 · ambientOn일 때만 재생한다.
+  // 볼륨 크기 변화는 위 setVolume 동기화가 게인에 반영하므로, 여기선 "켜야 하는가" 불리언에만 의존해
+  // 슬라이더를 움직일 때마다 루프가 재시작되지 않게 한다(첫 제스처 전 suspended는 sound가 resume 처리).
+  const ambientOn = useGameStore((s) => s.ambientOn)
+  const shouldPlayAmbient = !showTitle && ambientOn && volume > 0
+  useEffect(() => {
+    if (shouldPlayAmbient) startAmbient()
+    else stopAmbient()
+    return () => stopAmbient()
+  }, [shouldPlayAmbient])
+
   // 게임 내 "슬롯 변경": 현재 진행을 저장한 뒤 타이틀 화면으로 되돌린다(거기서 슬롯 선택/이어하기).
   const exitToTitle = () => {
     saveNow()
@@ -70,9 +81,7 @@ export default function App() {
     <div className="app">
       {loadFailed && (
         <div className="load-failed-banner" role="alert">
-          <span className="load-failed-text">
-            {STRINGS.banner.loadFailed}
-          </span>
+          <span className="load-failed-text">{STRINGS.banner.loadFailed}</span>
           <button
             type="button"
             className="load-failed-close"
@@ -85,9 +94,7 @@ export default function App() {
       )}
       {saveFailed && (
         <div className="load-failed-banner" role="alert">
-          <span className="load-failed-text">
-            {STRINGS.banner.saveFailed}
-          </span>
+          <span className="load-failed-text">{STRINGS.banner.saveFailed}</span>
           <button
             type="button"
             className="load-failed-close"

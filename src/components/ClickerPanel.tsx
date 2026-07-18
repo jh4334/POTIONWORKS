@@ -35,7 +35,8 @@ export default function ClickerPanel() {
   const clickPower = useGameStore((s) => s.clickPower)
   // 챌린지 '침묵의 손'(no-click) 진행 중이면 클릭이 무효(마나 0) — 팝·상시 표시를 +0으로(E-2.2).
   const clicksBlocked = useGameStore(
-    (s) => s.activeChallenge !== null && challengeById(s.activeChallenge.id)?.constraint === 'no-click',
+    (s) =>
+      s.activeChallenge !== null && challengeById(s.activeChallenge.id)?.constraint === 'no-click',
   )
   const effectivePower = clicksBlocked ? 0 : clickPower
 
@@ -60,10 +61,20 @@ export default function ClickerPanel() {
       const combo = times.length
 
       // combo 1 → 22px, combo 11+ → 32px. 좌우 ±10° 랜덤 기울기.
-      const fontSize = Math.min(POP_FONT_MAX, POP_FONT_MIN + Math.min(combo - 1, POP_FONT_MAX - POP_FONT_MIN))
+      const fontSize = Math.min(
+        POP_FONT_MAX,
+        POP_FONT_MIN + Math.min(combo - 1, POP_FONT_MAX - POP_FONT_MIN),
+      )
       const tilt = (Math.random() * 2 - 1) * 10
 
-      const pop: Pop = { id: nextId.current++, x, y, label: `+${formatNumber(effectivePower)}`, fontSize, tilt }
+      const pop: Pop = {
+        id: nextId.current++,
+        x,
+        y,
+        label: `+${formatNumber(effectivePower)}`,
+        fontSize,
+        tilt,
+      }
       setPops((prev) => [...prev, pop])
 
       // 10연타마다 솥 shake 1회(이미 흔들리는 중이면 유지).
@@ -118,7 +129,12 @@ export default function ClickerPanel() {
             key={pop.id}
             className="click-pop"
             style={
-              { left: pop.x, top: pop.y, fontSize: pop.fontSize, '--tilt': `${pop.tilt}deg` } as CSSProperties
+              {
+                left: pop.x,
+                top: pop.y,
+                fontSize: pop.fontSize,
+                '--tilt': `${pop.tilt}deg`,
+              } as CSSProperties
             }
             onAnimationEnd={(e) => {
               // shake와 팝은 같은 요소가 아니지만, 안전하게 자기 애니메이션만 처리.
@@ -130,7 +146,9 @@ export default function ClickerPanel() {
         ))}
       </button>
       {/* 클릭당 획득량 상시 표시(U8). 챌린지 '침묵의 손' 중엔 +0. clickPower는 구매/업그레이드 시에만 변함. */}
-      <div className="click-power-label">{STRINGS.clicker.perClick(formatNumber(effectivePower))}</div>
+      <div className="click-power-label">
+        {STRINGS.clicker.perClick(formatNumber(effectivePower))}
+      </div>
     </div>
   )
 }

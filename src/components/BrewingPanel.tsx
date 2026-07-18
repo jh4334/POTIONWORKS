@@ -65,7 +65,9 @@ function BrewingProgress({ potionId, readyAt }: { potionId: string; readyAt: num
     <div className="brewing-progress">
       <div className="brewing-progress-label">
         <span className="brewing-progress-name">{STRINGS.brewing.brewingLabel(def.name)}</span>
-        <span className="brewing-progress-remaining">{STRINGS.brewing.remaining(formatClock(remaining))}</span>
+        <span className="brewing-progress-remaining">
+          {STRINGS.brewing.remaining(formatClock(remaining))}
+        </span>
       </div>
       <div className="brewing-progress-bar">
         <div className="brewing-progress-fill" style={{ width: `${pct}%` }} />
@@ -88,14 +90,18 @@ function CollectView({ potionId }: { potionId: string }) {
 
 export default function BrewingPanel() {
   // 해금 여부: 전생 포함 총 누적 마나가 첫 포션 임계 이상이면 노출. 파생 불리언이라 한 번만 flip(리렌더 최소).
-  const anyUnlocked = useGameStore((s) => POTIONS.some((p) => isPotionUnlocked(p, s.totalLifetimeMana)))
+  const anyUnlocked = useGameStore((s) =>
+    POTIONS.some((p) => isPotionUnlocked(p, s.totalLifetimeMana)),
+  )
   // 조제/수확 상태(원시값 구독 — brewing 객체는 tick 불변 참조라 tick마다 리렌더되지 않는다).
   const brewingPotionId = useGameStore((s) => s.brewing?.potionId ?? null)
   const readyAt = useGameStore((s) => s.brewing?.readyAt ?? null)
   const readyPotion = useGameStore((s) => s.readyPotion)
   // 해금된 포션 id 목록(누적 마나 파생 — 새 포션이 해금될 때만 바뀐다).
   const unlockedIds = useGameStore(
-    useShallow((s) => POTIONS.filter((p) => isPotionUnlocked(p, s.totalLifetimeMana)).map((p) => p.id)),
+    useShallow((s) =>
+      POTIONS.filter((p) => isPotionUnlocked(p, s.totalLifetimeMana)).map((p) => p.id),
+    ),
   )
 
   // 첫 포션 해금 전에는 패널 자체를 숨긴다(온보딩 원칙 — 조기 노출 방지).

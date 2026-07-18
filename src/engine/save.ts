@@ -45,7 +45,9 @@ import type {
 //   completedChallenges(완료 id 목록 → 영구 생산 배율의 진실). 각성해도 유지되는 값이라 세이브 포함.
 // v10(E-3.3): 설정 확장 — muted(불리언) → volume(0~1)로 대체 + 표시 설정 3종(numberNotation/effects/fontScale) 추가.
 //   전부 세이브 대상(슬롯별로 유지). v9→v10 이전 시 muted true→volume 0, false→기본(0.7).
-export const SAVE_VERSION = 10
+// v11(E-4.4): 배경음 토글(ambientOn: boolean) 추가 — 효과음 볼륨과 독립적으로 앰비언트 루프를 켜고 끈다.
+//   세이브 대상. v10→v11 이전 시 기본값 true(기존 유저도 배경음이 켜진 상태로 시작).
+export const SAVE_VERSION = 11
 
 // 직렬화 대상(진실만). 파생값은 제외.
 export interface SaveState {
@@ -65,6 +67,8 @@ export interface SaveState {
   totalLifetimeMana: number
   // 볼륨(v10). 0~1. v3~v9의 muted(불리언)를 대체. 사운드 게인에 반영, volume===0이 곧 음소거.
   volume: number
+  // 배경음 토글(v11). 효과음 볼륨과 독립. true면 게임 화면에서 앰비언트 보글보글 루프를 재생한다.
+  ambientOn: boolean
   // 표시 설정(v10). numberNotation=숫자 표기('suffix'|'comma'), effects=이펙트 강도('full'|'reduced'),
   // fontScale=글자 크기 배율(1|1.15|1.3). 슬롯별로 유지되는 값이라 세이브에 포함한다.
   numberNotation: NumberNotation
@@ -160,6 +164,7 @@ export function toSaveData(state: SaveState, now: number = Date.now()): SaveData
       totalClicks: state.totalClicks,
       totalLifetimeMana: state.totalLifetimeMana,
       volume: state.volume,
+      ambientOn: state.ambientOn,
       numberNotation: state.numberNotation,
       effects: state.effects,
       fontScale: state.fontScale,
@@ -225,7 +230,12 @@ function normalizeGenerators(v: unknown): Record<string, number> {
   const out: Record<string, number> = {}
   if (!isRecord(v)) return out
   for (const [id, count] of Object.entries(v)) {
-    if (KNOWN_GENERATOR_IDS.has(id) && typeof count === 'number' && Number.isFinite(count) && count >= 0) {
+    if (
+      KNOWN_GENERATOR_IDS.has(id) &&
+      typeof count === 'number' &&
+      Number.isFinite(count) &&
+      count >= 0
+    ) {
       out[id] = Math.min(Math.floor(count), GENERATOR_MAX)
     }
   }
@@ -251,7 +261,8 @@ function normalizeStardustUpgrades(v: unknown): Record<string, number> {
     const def = stardustUpgradeById(id)
     if (!def || !KNOWN_STARDUST_IDS.has(id)) continue
     if (typeof level !== 'number' || !Number.isFinite(level) || level < 1) continue
-    const clamped = def.maxLevel === null ? Math.floor(level) : Math.min(Math.floor(level), def.maxLevel)
+    const clamped =
+      def.maxLevel === null ? Math.floor(level) : Math.min(Math.floor(level), def.maxLevel)
     if (clamped >= 1) out[id] = clamped
   }
   return out
@@ -296,6 +307,11 @@ function normalizeVolume(v: unknown, fallback: number): number {
   return Math.min(1, Math.max(0, v))
 }
 
+// ambientOn 정규화(v11): 불리언만 채택, 그 외(누락·손상)는 기본 true(배경음 켜짐).
+function normalizeAmbient(v: unknown): boolean {
+  return typeof v === 'boolean' ? v : true
+}
+
 // numberNotation 정규화(v10): 'comma'만 명시적으로, 그 외(누락·오타)는 기본 'suffix'.
 function normalizeNotation(v: unknown): NumberNotation {
   return v === 'comma' ? 'comma' : 'suffix'
@@ -335,6 +351,7 @@ function normalizeAchievements(v: unknown): string[] {
 // v8→v9: 챌린지 런(activeChallenge/completedChallenges)이 없으므로 null/[]로 초기화한다.
 // v9→v10: muted(불리언)를 volume(0~1)로 이전(true→0, false→0.7) + 표시 설정 3종(numberNotation='suffix',
 //   effects='full', fontScale=1)을 기본값으로 초기화한다.
+// v10→v11: ambientOn(배경음 토글)이 없으므로 true로 초기화한다(기존 유저도 배경음 켜짐으로 시작).
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
     console.warn(STRINGS.log.save.notObject)
@@ -377,17 +394,27 @@ export function migrate(raw: unknown): SaveData | null {
   const isV3Plus = raw.version >= 3
   const achievements = isV3Plus ? normalizeAchievements(s.achievements) : []
   const totalClicks = isV3Plus ? normalizeNonNegInt(s.totalClicks, 0) : 0
-  const totalLifetimeMana = isV3Plus ? normalizeNonNeg(s.totalLifetimeMana, lifetimeMana) : lifetimeMana
+  const totalLifetimeMana = isV3Plus
+    ? normalizeNonNeg(s.totalLifetimeMana, lifetimeMana)
+    : lifetimeMana
 
   // 볼륨(v10). v9 이하엔 없다 → v3~v9의 muted(불리언)를 참조해 이전한다: muted true→0(음소거), false→기본(0.7).
   //   v2 이하엔 muted도 없으므로 기본값. v10 이상은 저장된 volume을 0~1로 클램프해 채택.
   //   표시 설정(numberNotation/effects/fontScale)도 v9 이하엔 없으므로 기본값, v10 이상은 정규화해 채택.
   const isV10Plus = raw.version >= 10
   const legacyMuted = isV3Plus ? s.muted === true : false
-  const volume = isV10Plus ? normalizeVolume(s.volume, DEFAULT_VOLUME) : legacyMuted ? 0 : DEFAULT_VOLUME
+  const volume = isV10Plus
+    ? normalizeVolume(s.volume, DEFAULT_VOLUME)
+    : legacyMuted
+      ? 0
+      : DEFAULT_VOLUME
   const numberNotation = isV10Plus ? normalizeNotation(s.numberNotation) : 'suffix'
   const effects = isV10Plus ? normalizeEffects(s.effects) : 'full'
   const fontScale = isV10Plus ? normalizeFontScale(s.fontScale) : 1
+
+  // 배경음 토글(v11). v10 이하엔 없다 → true(켜짐). v11 이상은 저장된 불리언을 채택(손상 시 true).
+  const isV11Plus = raw.version >= 11
+  const ambientOn = isV11Plus ? normalizeAmbient(s.ambientOn) : true
 
   // v3 이하엔 playtimeMs 필드가 없다 → 0으로 시작. v4 이상은 검증해 채택(누락·손상 시 0).
   const isV4Plus = raw.version >= 4
@@ -401,9 +428,7 @@ export function migrate(raw: unknown): SaveData | null {
   // (v6 세이브의 deviceId는 그 저장을 만든 기기의 값 — 마이그레이션이 덮어쓰지 않고 그대로 보존한다.)
   const isV6Plus = raw.version >= 6
   const deviceId =
-    isV6Plus && typeof s.deviceId === 'string' && s.deviceId.length > 0
-      ? s.deviceId
-      : getDeviceId()
+    isV6Plus && typeof s.deviceId === 'string' && s.deviceId.length > 0 ? s.deviceId : getDeviceId()
   const saveCount = isV6Plus ? normalizeNonNegInt(s.saveCount, 0) : 0
 
   // v6 이하엔 통계 카운터가 없다 → 모두 0. v7 이상은 검증해 채택(누락·손상·음수·NaN은 0).
@@ -444,6 +469,7 @@ export function migrate(raw: unknown): SaveData | null {
       totalClicks,
       totalLifetimeMana,
       volume,
+      ambientOn,
       numberNotation,
       effects,
       fontScale,
@@ -579,7 +605,8 @@ function hasFiniteNumbers(state: SaveState): boolean {
   // 조제 중이면 readyAt도 유한해야 한다(비유한 타임스탬프가 세이브를 오염시키는 것을 막는다).
   if (state.brewing !== null && !Number.isFinite(state.brewing.readyAt)) return false
   // 챌린지 진행 중이면 startedAt도 유한해야 한다(timed 판정 기준의 오염 방지).
-  if (state.activeChallenge !== null && !Number.isFinite(state.activeChallenge.startedAt)) return false
+  if (state.activeChallenge !== null && !Number.isFinite(state.activeChallenge.startedAt))
+    return false
   for (const count of Object.values(state.generators)) {
     if (typeof count !== 'number' || !Number.isFinite(count)) return false
   }

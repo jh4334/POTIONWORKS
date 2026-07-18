@@ -43,13 +43,17 @@ export default function AchievementsModal({ onClose }: Props) {
       wide
       title={
         <>
-          {STRINGS.achievements.title} <span className="achievement-count">{count}/{ACHIEVEMENTS.length}</span>
+          {STRINGS.achievements.title}{' '}
+          <span className="achievement-count">
+            {count}/{ACHIEVEMENTS.length}
+          </span>
         </>
       }
       onClose={onClose}
     >
       <p className="achievement-bonus">
-        {STRINGS.achievements.bonusLead} <strong>+{bonusPercent}%</strong>{STRINGS.achievements.bonusTail}
+        {STRINGS.achievements.bonusLead} <strong>+{bonusPercent}%</strong>
+        {STRINGS.achievements.bonusTail}
       </p>
       <div className="achievement-grid">
         {ACHIEVEMENTS.map((a) => {
@@ -68,7 +72,9 @@ export default function AchievementsModal({ onClose }: Props) {
               <span className="achievement-item-mark">{done ? '✅' : isHidden ? '❓' : '🔒'}</span>
               <div className="achievement-item-body">
                 {/* 이름은 숨겨진 업적만 가린다 — 일반 잠금 업적은 이름·조건 힌트가 목표 리스트 역할(U1 리뷰). */}
-                <div className="achievement-item-name">{isHidden ? STRINGS.achievements.lockedName : a.name}</div>
+                <div className="achievement-item-name">
+                  {isHidden ? STRINGS.achievements.lockedName : a.name}
+                </div>
                 <div className="achievement-item-desc">
                   {isHidden ? STRINGS.achievements.hiddenDesc : a.desc}
                 </div>

@@ -302,7 +302,10 @@ describe('achievementCurrent', () => {
   it('조건 종류별 현재값을 통계에서 파생', () => {
     expect(achievementCurrent(ach({ kind: 'clicks', min: 100 }), stats)).toBe(42)
     expect(
-      achievementCurrent(ach({ kind: 'generatorCount', generatorId: 'apprentice', min: 50 }), stats),
+      achievementCurrent(
+        ach({ kind: 'generatorCount', generatorId: 'apprentice', min: 50 }),
+        stats,
+      ),
     ).toBe(7)
     expect(achievementCurrent(ach({ kind: 'lifetimeMana', min: 1e6 }), stats)).toBe(12345)
     expect(achievementCurrent(ach({ kind: 'prestiges', min: 5 }), stats)).toBe(3)
@@ -368,7 +371,9 @@ describe('achievementMultiplier', () => {
   })
 
   it('전체 배율은 스타더스트×업적 합성 — totalMps에 한 번만 곱한다', () => {
-    const gens: GeneratorDef[] = [{ id: 'a', tier: 1, name: 'A', icon: '', baseCost: 15, baseMps: 1 }]
+    const gens: GeneratorDef[] = [
+      { id: 'a', tier: 1, name: 'A', icon: '', baseCost: 15, baseMps: 1 },
+    ]
     const base = 10 // a 10개 × 1
     const globalMult = stardustMultiplier(5) * achievementMultiplier(10) // 1.5 × 1.1 = 1.65
     expect(totalMps({ a: 10 }, gens, [], globalMult)).toBeCloseTo(base * 1.65)
@@ -493,9 +498,9 @@ describe('challengeMultiplier (E-2.2)', () => {
   })
   it('composeGlobalMult에 challengeMult로 합류', () => {
     // stardust 5 → 1.5, 업적 0 → 1, 버프 없음, 챌린지 ×1.5.
-    expect(
-      composeGlobalMult({ stardust: 5, achievementCount: 0, challengeMult: 1.5 }),
-    ).toBeCloseTo(1.5 * 1.5)
+    expect(composeGlobalMult({ stardust: 5, achievementCount: 0, challengeMult: 1.5 })).toBeCloseTo(
+      1.5 * 1.5,
+    )
   })
 })
 
@@ -660,20 +665,66 @@ describe('isAchievementUnlocked', () => {
   })
 
   it('E-1.3 신규 조건: stardust/playtime/meteorsClicked/prestigeCancels/mutedPlaytime/clickCombo/dragonVisits 경계', () => {
-    expect(isAchievementUnlocked(ach({ kind: 'stardust', min: 25 }), { ...base, stardust: 24 })).toBe(false)
-    expect(isAchievementUnlocked(ach({ kind: 'stardust', min: 25 }), { ...base, stardust: 25 })).toBe(true)
-    expect(isAchievementUnlocked(ach({ kind: 'playtime', min: 1000 }), { ...base, playtimeMs: 999 })).toBe(false)
-    expect(isAchievementUnlocked(ach({ kind: 'playtime', min: 1000 }), { ...base, playtimeMs: 1000 })).toBe(true)
-    expect(isAchievementUnlocked(ach({ kind: 'meteorsClicked', min: 5 }), { ...base, meteorsClicked: 4 })).toBe(false)
-    expect(isAchievementUnlocked(ach({ kind: 'meteorsClicked', min: 5 }), { ...base, meteorsClicked: 5 })).toBe(true)
-    expect(isAchievementUnlocked(ach({ kind: 'prestigeCancels', min: 3 }), { ...base, prestigeCancels: 2 })).toBe(false)
-    expect(isAchievementUnlocked(ach({ kind: 'prestigeCancels', min: 3 }), { ...base, prestigeCancels: 3 })).toBe(true)
-    expect(isAchievementUnlocked(ach({ kind: 'mutedPlaytime', min: 3600000 }), { ...base, mutedPlaytimeMs: 3599999 })).toBe(false)
-    expect(isAchievementUnlocked(ach({ kind: 'mutedPlaytime', min: 3600000 }), { ...base, mutedPlaytimeMs: 3600000 })).toBe(true)
-    expect(isAchievementUnlocked(ach({ kind: 'clickCombo', min: 100 }), { ...base, clickCombo: 99 })).toBe(false)
-    expect(isAchievementUnlocked(ach({ kind: 'clickCombo', min: 100 }), { ...base, clickCombo: 100 })).toBe(true)
-    expect(isAchievementUnlocked(ach({ kind: 'dragonVisits', min: 1 }), { ...base, dragonVisits: 0 })).toBe(false)
-    expect(isAchievementUnlocked(ach({ kind: 'dragonVisits', min: 1 }), { ...base, dragonVisits: 1 })).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'stardust', min: 25 }), { ...base, stardust: 24 }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'stardust', min: 25 }), { ...base, stardust: 25 }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'playtime', min: 1000 }), { ...base, playtimeMs: 999 }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'playtime', min: 1000 }), { ...base, playtimeMs: 1000 }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'meteorsClicked', min: 5 }), {
+        ...base,
+        meteorsClicked: 4,
+      }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'meteorsClicked', min: 5 }), {
+        ...base,
+        meteorsClicked: 5,
+      }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'prestigeCancels', min: 3 }), {
+        ...base,
+        prestigeCancels: 2,
+      }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'prestigeCancels', min: 3 }), {
+        ...base,
+        prestigeCancels: 3,
+      }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'mutedPlaytime', min: 3600000 }), {
+        ...base,
+        mutedPlaytimeMs: 3599999,
+      }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'mutedPlaytime', min: 3600000 }), {
+        ...base,
+        mutedPlaytimeMs: 3600000,
+      }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'clickCombo', min: 100 }), { ...base, clickCombo: 99 }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'clickCombo', min: 100 }), { ...base, clickCombo: 100 }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'dragonVisits', min: 1 }), { ...base, dragonVisits: 0 }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'dragonVisits', min: 1 }), { ...base, dragonVisits: 1 }),
+    ).toBe(true)
   })
 })
 
@@ -875,7 +926,9 @@ describe('productionBuffBonus (E-1.2 다중 생산 버프 정산)', () => {
 
   it('창이 구간 시작 이전부터라도 겹친 부분만 정산', () => {
     // 버프 [−10s, 10s], 구간 [0, 30s] → 겹침 [0,10s] 10s → 10×1×10 = 100 (×2)
-    const bonus = productionBuffBonus(10, 0, 30_000, [{ startsAt: -10_000, endsAt: 10_000, mult: 2 }])
+    const bonus = productionBuffBonus(10, 0, 30_000, [
+      { startsAt: -10_000, endsAt: 10_000, mult: 2 },
+    ])
     expect(bonus).toBeCloseTo(10 * 1 * 10, 6)
   })
 

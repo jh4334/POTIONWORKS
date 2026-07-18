@@ -60,11 +60,15 @@ function SlotCard({
         <div className="slot-card-body">
           {info.savedAt !== null ? (
             <>
-              <span className="slot-card-line">{STRINGS.slotSelect.savedAt(formatSavedAt(info.savedAt))}</span>
+              <span className="slot-card-line">
+                {STRINGS.slotSelect.savedAt(formatSavedAt(info.savedAt))}
+              </span>
               <span className="slot-card-line">
                 {STRINGS.slotSelect.lifetime(formatNumber(info.totalLifetimeMana))}
               </span>
-              <span className="slot-card-line">{STRINGS.slotSelect.playtime(formatPlaytime(info.playtimeMs))}</span>
+              <span className="slot-card-line">
+                {STRINGS.slotSelect.playtime(formatPlaytime(info.playtimeMs))}
+              </span>
             </>
           ) : (
             <span className="slot-card-line">{STRINGS.slotSelect.empty}</span>

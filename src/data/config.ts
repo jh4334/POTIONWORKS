@@ -11,7 +11,7 @@ export const TICK_INTERVAL_MS = 100
 export const SAVE_KEY = 'potionworks-save'
 // 손상된 세이브 백업 키(D-1 세이브 파괴 방지). deserialize/migrate 실패 시 원본 raw를 여기 보존한다.
 // 최신 1개만 유지 — 초기화되지 않았음을 사용자에게 보여주고 수동 복구를 가능케 한다.
-export const SAVE_CORRUPT_KEY = SAVE_KEY + '-corrupt'
+export const SAVE_CORRUPT_KEY = `${SAVE_KEY}-corrupt`
 // 자동저장 주기(ms). DESIGN.md §3: 10초 자동저장. tick 루프와는 별도 인터벌.
 export const AUTOSAVE_INTERVAL_MS = 10_000
 // 기기 식별자 저장 키(D-5.3). 세이브 키와 별개로 영속 — 각성/하드리셋/세이브 교체와 무관하게 이 기기를 식별한다.

@@ -15,11 +15,17 @@ interface Props {
 }
 
 // 글자 크기 옵션 라벨(FONT_SCALE_OPTIONS와 1:1). 데이터는 수치, 표시 문자열은 strings.
-const FONT_LABELS = [STRINGS.settings.fontSmall, STRINGS.settings.fontMedium, STRINGS.settings.fontLarge]
+const FONT_LABELS = [
+  STRINGS.settings.fontSmall,
+  STRINGS.settings.fontMedium,
+  STRINGS.settings.fontLarge,
+]
 
 export default function SettingsModal({ onClose, onOpenBackup, onChangeSlot }: Props) {
   const volume = useGameStore((s) => s.volume)
   const setVolume = useGameStore((s) => s.setVolume)
+  const ambientOn = useGameStore((s) => s.ambientOn)
+  const setAmbientOn = useGameStore((s) => s.setAmbientOn)
   const numberNotation = useGameStore((s) => s.numberNotation)
   const setNumberNotation = useGameStore((s) => s.setNumberNotation)
   const effects = useGameStore((s) => s.effects)
@@ -56,7 +62,9 @@ export default function SettingsModal({ onClose, onOpenBackup, onChangeSlot }: P
             onChange={(e) => setVolume(Number(e.target.value) / 100)}
             aria-label={STRINGS.settings.volume}
           />
-          <span className="settings-volume-value">{STRINGS.settings.volumeValue(Math.round(volume * 100))}</span>
+          <span className="settings-volume-value">
+            {STRINGS.settings.volumeValue(Math.round(volume * 100))}
+          </span>
           <label className="settings-check">
             <input
               type="checkbox"
@@ -66,6 +74,19 @@ export default function SettingsModal({ onClose, onOpenBackup, onChangeSlot }: P
             {STRINGS.settings.mute}
           </label>
         </div>
+      </div>
+
+      {/* 배경음(앰비언트) 토글 — 효과음 볼륨과 독립(E-4.4). */}
+      <div className="settings-row">
+        <span className="settings-row-label">{STRINGS.settings.ambient}</span>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={ambientOn}
+            onChange={(e) => setAmbientOn(e.target.checked)}
+          />
+          {STRINGS.settings.ambientOn}
+        </label>
       </div>
 
       {/* 숫자 표기 전환 */}

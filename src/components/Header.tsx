@@ -115,7 +115,9 @@ export default function Header({ onExitToTitle }: Props) {
       </div>
       <div className="header-actions">
         {lastSavedAt !== null && (
-          <span className="header-saved-at">{STRINGS.header.savedAt(formatClock(lastSavedAt))}</span>
+          <span className="header-saved-at">
+            {STRINGS.header.savedAt(formatClock(lastSavedAt))}
+          </span>
         )}
         <button
           type="button"

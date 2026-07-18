@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  font-family: system-ui, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   --bg: #1a1425;
   --panel: #251c36;
   --border: #3d2f57;
@@ -34,7 +34,7 @@ input,
 /* 인터랙티브 요소: 더블탭 확대·지연 없이 즉시 반응(touch-action), 탭 하이라이트 제거. */
 button,
 a,
-[role='button'] {
+[role="button"] {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
@@ -212,7 +212,9 @@ a,
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
-  transition: border-color 0.1s ease, background 0.1s ease;
+  transition:
+    border-color 0.1s ease,
+    background 0.1s ease;
 }
 
 .modal-button:hover:not(:disabled) {
@@ -300,7 +302,10 @@ a,
   font-size: 22px;
   font-weight: 800;
   color: #eafff8;
-  text-shadow: 0 0 3px #10202a, 0 0 6px #10202a, 0 2px 4px rgba(0, 0, 0, 0.75),
+  text-shadow:
+    0 0 3px #10202a,
+    0 0 6px #10202a,
+    0 2px 4px rgba(0, 0, 0, 0.75),
     0 0 12px rgba(120, 255, 214, 0.5);
   animation: click-pop-rise 0.8s ease-out forwards;
   will-change: transform, opacity;
@@ -346,7 +351,9 @@ a,
   border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
-  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+  transition:
+    border-color 0.1s ease,
+    box-shadow 0.1s ease;
 }
 
 .upgrade-card:disabled {
@@ -402,7 +409,9 @@ a,
   border-radius: 10px;
   cursor: pointer;
   box-shadow: 0 0 14px rgba(255, 200, 90, 0.5);
-  transition: filter 0.1s ease, transform 0.05s ease;
+  transition:
+    filter 0.1s ease,
+    transform 0.05s ease;
 }
 
 .prestige-button:hover {
@@ -648,8 +657,8 @@ a,
   display: grid;
   grid-template-columns: auto 1fr auto;
   grid-template-areas:
-    'icon name cost'
-    'icon desc time';
+    "icon name cost"
+    "icon desc time";
   align-items: center;
   gap: 2px 8px;
   padding: 8px 10px;
@@ -659,7 +668,9 @@ a,
   border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
-  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+  transition:
+    border-color 0.1s ease,
+    box-shadow 0.1s ease;
 }
 
 .potion-card:disabled {
@@ -759,7 +770,9 @@ a,
   border: 1px solid var(--accent);
   border-radius: 10px;
   cursor: pointer;
-  transition: filter 0.1s ease, transform 0.05s ease;
+  transition:
+    filter 0.1s ease,
+    transform 0.05s ease;
 }
 
 .potion-collect.can-afford {
@@ -799,7 +812,9 @@ a,
   border: 1px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
-  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+  transition:
+    border-color 0.1s ease,
+    box-shadow 0.1s ease;
 }
 
 .stardust-card:disabled {
@@ -961,7 +976,9 @@ a,
   border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
-  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+  transition:
+    border-color 0.1s ease,
+    box-shadow 0.1s ease;
 }
 
 .generator-buy:disabled {
@@ -1049,7 +1066,9 @@ a,
   background: linear-gradient(135deg, #2f2547, var(--panel));
   border: 1px solid #ffd76a;
   border-radius: 10px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 12px rgba(255, 200, 90, 0.25);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.45),
+    0 0 12px rgba(255, 200, 90, 0.25);
   animation: toast-in 0.28s ease-out;
 }
 
@@ -1393,11 +1412,11 @@ a,
 }
 
 /* D-2.8 구매 불가(aria-disabled) — disabled 룩 유지하되 가격 숫자 색은 낮추지 않는다(대비 유지). */
-.generator-buy[aria-disabled='true'] {
+.generator-buy[aria-disabled="true"] {
   cursor: not-allowed;
 }
 
-.generator-buy[aria-disabled='true'] .generator-buy-delta {
+.generator-buy[aria-disabled="true"] .generator-buy-delta {
   color: var(--text-dim);
 }
 
@@ -1543,7 +1562,9 @@ a,
 
 /* D-4.2 10연타마다 솥 shake 1회(0.3s) — 글로우 루프와 동시 실행. */
 .cauldron-button.shake {
-  animation: cauldron-shake 0.3s ease-in-out, cauldron-glow 4s ease-in-out infinite;
+  animation:
+    cauldron-shake 0.3s ease-in-out,
+    cauldron-glow 4s ease-in-out infinite;
 }
 
 @keyframes cauldron-shake {
@@ -1592,7 +1613,11 @@ a,
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, rgba(210, 190, 255, 0.55), rgba(169, 112, 255, 0.12));
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(210, 190, 255, 0.55),
+    rgba(169, 112, 255, 0.12)
+  );
   animation: ambient-rise linear infinite;
   will-change: transform, opacity;
 }
@@ -1759,7 +1784,11 @@ a,
 .prestige-flash {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 45%, rgba(255, 216, 128, 0.85), rgba(255, 180, 72, 0) 60%);
+  background: radial-gradient(
+    circle at 50% 45%,
+    rgba(255, 216, 128, 0.85),
+    rgba(255, 180, 72, 0) 60%
+  );
   animation: prestige-flash 1.5s ease-in-out forwards;
 }
 
@@ -1898,7 +1927,7 @@ a,
   justify-content: flex-end;
 }
 
-.settings-volume input[type='range'] {
+.settings-volume input[type="range"] {
   flex: 1 1 90px;
   min-width: 80px;
   accent-color: var(--accent);
@@ -2024,27 +2053,27 @@ a,
    E-3.3 이펙트 강도 'reduced' — prefers-reduced-motion과 동일 처리(html[data-effects='reduced']).
    OS 설정과 무관하게 사용자가 선택하면 D-4 연출을 끈다(위 reduced-motion 블록들의 미러).
    ============================================================ */
-html[data-effects='reduced'] .cauldron-emoji,
-html[data-effects='reduced'] .cauldron-button,
-html[data-effects='reduced'] .cauldron-button.shake,
-html[data-effects='reduced'] .ambient-bubble,
-html[data-effects='reduced'] .generator-row.buy-flash,
-html[data-effects='reduced'] .generator-owned.bump,
-html[data-effects='reduced'] .header-mana.mana-drop,
-html[data-effects='reduced'] .meteor-badge,
-html[data-effects='reduced'] .potion-collect.can-afford,
-html[data-effects='reduced'] .generator-buy.can-afford,
-html[data-effects='reduced'] .upgrade-card.can-afford {
+html[data-effects="reduced"] .cauldron-emoji,
+html[data-effects="reduced"] .cauldron-button,
+html[data-effects="reduced"] .cauldron-button.shake,
+html[data-effects="reduced"] .ambient-bubble,
+html[data-effects="reduced"] .generator-row.buy-flash,
+html[data-effects="reduced"] .generator-owned.bump,
+html[data-effects="reduced"] .header-mana.mana-drop,
+html[data-effects="reduced"] .meteor-badge,
+html[data-effects="reduced"] .potion-collect.can-afford,
+html[data-effects="reduced"] .generator-buy.can-afford,
+html[data-effects="reduced"] .upgrade-card.can-afford {
   animation: none;
 }
 
-html[data-effects='reduced'] .prestige-sequence,
-html[data-effects='reduced'] .burst-layer {
+html[data-effects="reduced"] .prestige-sequence,
+html[data-effects="reduced"] .burst-layer {
   display: none;
 }
 
 /* 유성: 이동 애니메이션 대신 중앙 상단에 정적으로 표시(클릭 기회는 보존 — JS가 수명 종료 시 제거). */
-html[data-effects='reduced'] .meteor {
+html[data-effects="reduced"] .meteor {
   left: 50%;
   top: 18%;
   transform: translateX(-50%);

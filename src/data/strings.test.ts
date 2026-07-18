@@ -20,7 +20,9 @@ describe('STRINGS i18n 저장소', () => {
   })
 
   it('개발자 로그 보간 함수도 동작한다', () => {
-    expect(STRINGS.log.save.unknownVersion(9)).toBe('[save] 알 수 없는 세이브 버전(9) — 무시합니다.')
+    expect(STRINGS.log.save.unknownVersion(9)).toBe(
+      '[save] 알 수 없는 세이브 버전(9) — 무시합니다.',
+    )
   })
 
   it('t 별칭은 STRINGS와 동일 참조다', () => {

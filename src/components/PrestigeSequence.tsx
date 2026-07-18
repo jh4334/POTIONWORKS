@@ -35,6 +35,7 @@ export default function PrestigeSequence() {
       <div className="prestige-flash" />
       <div className="prestige-spark-origin">
         {Array.from({ length: PARTICLE_COUNT }, (_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: 고정 개수의 동일 스파크 — 재정렬 없어 인덱스 키가 적절하다.
           <span key={i} className="prestige-spark" style={{ '--i': i } as CSSProperties}>
             ✨
           </span>

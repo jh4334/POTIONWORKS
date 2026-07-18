@@ -102,10 +102,7 @@ export function generatorMultiplier(
 
 // 생산 트리(별의 축복, E-2.1)의 특정 티어 배율 = Π(mult^레벨). 상점 레벨 맵을 받는 순수 함수.
 // 시설 참조는 데이터(effect.generatorId)로 하고 clampLevel로 손상 세이브를 방어한다.
-export function stardustGeneratorMult(
-  generatorId: string,
-  levels: Record<string, number>,
-): number {
+export function stardustGeneratorMult(generatorId: string, levels: Record<string, number>): number {
   let mult = 1
   for (const def of STARDUST_UPGRADES) {
     const e = def.effect
@@ -138,7 +135,9 @@ export function totalMps(
   let total = 0
   for (const g of generators) {
     total +=
-      (counts[g.id] ?? 0) * g.baseMps * generatorMultiplier(g.id, purchasedUpgrades, counts, stardustLevels)
+      (counts[g.id] ?? 0) *
+      g.baseMps *
+      generatorMultiplier(g.id, purchasedUpgrades, counts, stardustLevels)
   }
   return total * globalMult
 }
@@ -154,7 +153,9 @@ export function effectiveGeneratorMps(
   stardustLevels: Record<string, number> = {},
 ): number {
   return (
-    def.baseMps * generatorMultiplier(def.id, purchasedUpgrades, counts, stardustLevels) * globalMult
+    def.baseMps *
+    generatorMultiplier(def.id, purchasedUpgrades, counts, stardustLevels) *
+    globalMult
   )
 }
 
@@ -232,7 +233,10 @@ export function composeGlobalMult({
   challengeMult = 1,
 }: GlobalMultContext): number {
   return (
-    stardustMultiplier(stardust) * achievementMultiplier(achievementCount) * buffMult * challengeMult
+    stardustMultiplier(stardust) *
+    achievementMultiplier(achievementCount) *
+    buffMult *
+    challengeMult
   )
 }
 
@@ -344,7 +348,8 @@ export function clickPower(
 // --- 스타더스트 상점 (D-3.1) ---
 // 상점 레벨은 maxLevel까지만 유효 — 순수 함수가 손상 세이브(초과 레벨)에도 정직하도록 방어 클램프.
 function clampLevel(def: StardustUpgradeDef, level: number): number {
-  const lv = typeof level === 'number' && Number.isFinite(level) && level > 0 ? Math.floor(level) : 0
+  const lv =
+    typeof level === 'number' && Number.isFinite(level) && level > 0 ? Math.floor(level) : 0
   return def.maxLevel === null ? lv : Math.min(lv, def.maxLevel)
 }
 
