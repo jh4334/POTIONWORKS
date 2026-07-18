@@ -73,6 +73,8 @@ export function loadGame(): void {
     const amount = offlineEarnings(elapsedMs, mps, efficiency, capMs)
     const cappedMs = Math.min(elapsedMs, capMs)
     if (amount > 0) useGameStore.getState().applyOfflineEarnings(amount, now, elapsedMs, cappedMs)
+    // 오프라인 자동화(E-2.1 공방 관리인): 정산으로 쌓인 마나로 업그레이드·시설을 자동 구매(레벨 0이면 무동작).
+    useGameStore.getState().applyOfflineAutomation()
   } else if (elapsedMs > 0 && mps > 0) {
     // 60초 미만 부재(D-1.5): 팝업 없이 100%를 조용히 지급. lastTick=now로 이중 지급 없음.
     useGameStore.getState().applySilentEarnings(mps * (elapsedMs / 1000), now)

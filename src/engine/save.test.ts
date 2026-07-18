@@ -16,6 +16,7 @@ import { UPGRADES } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
 import { STARDUST_UPGRADES } from '../data/stardustShop.ts'
 import { POTIONS } from '../data/potions.ts'
+import { CHALLENGES } from '../data/challenges.ts'
 import { useGameStore } from '../store/gameStore.ts'
 import {
   SAVE_KEY,
@@ -29,6 +30,7 @@ const KNOWN_UP = UPGRADES[0].id // 'apprentice-x2-10'
 const KNOWN_ACH = ACHIEVEMENTS[0].id // 'clicks-100'
 const KNOWN_STARDUST = STARDUST_UPGRADES[0].id // 'starting-apprentices'
 const KNOWN_POTION = POTIONS[0].id // 'vitality'
+const KNOWN_CHALLENGE = CHALLENGES[0].id // 'silent-hands'
 
 // 클린 픽스처(알려진 id만, 중복 없음) — 라운드트립이 정확히 일치하도록.
 function makeState(): SaveState {
@@ -60,6 +62,8 @@ function makeState(): SaveState {
     brewing: { potionId: KNOWN_POTION, readyAt: 1_800_000 },
     readyPotion: null,
     potionsBrewed: 6,
+    activeChallenge: { id: KNOWN_CHALLENGE, startedAt: 1_650_000 },
+    completedChallenges: [CHALLENGES[1].id],
   }
 }
 
@@ -464,6 +468,67 @@ describe('migrate', () => {
       state: { ...validState(), deviceId: 'dev-x', saveCount: 3, brewing: { potionId: KNOWN_POTION, readyAt: NaN } },
     })
     expect(nanReady!.state.brewing).toBeNull()
+  })
+
+  it('v8→v9: 챌린지 상태가 없으면 activeChallenge=null, completedChallenges=[]', () => {
+    const v8 = {
+      version: 8,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        brewing: null,
+        readyPotion: null,
+        potionsBrewed: 0,
+      },
+    }
+    const out = migrate(v8)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 9로 승격
+    expect(out!.state.activeChallenge).toBeNull()
+    expect(out!.state.completedChallenges).toEqual([])
+  })
+
+  it('v9 세이브는 챌린지 상태를 채택(미지 id·손상 startedAt은 떨군다)', () => {
+    const ok = migrate({
+      version: 9,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        activeChallenge: { id: KNOWN_CHALLENGE, startedAt: 1_650_000 },
+        completedChallenges: [CHALLENGES[1].id, 'no-such-challenge'],
+      },
+    })
+    expect(ok!.state.activeChallenge).toEqual({ id: KNOWN_CHALLENGE, startedAt: 1_650_000 })
+    expect(ok!.state.completedChallenges).toEqual([CHALLENGES[1].id]) // 미지 id 제거
+    const bad = migrate({
+      version: 9,
+      savedAt: 1,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        activeChallenge: { id: 'no-such-challenge', startedAt: 5 }, // 미지 id → null
+        completedChallenges: 'nope',
+      },
+    })
+    expect(bad!.state.activeChallenge).toBeNull()
+    expect(bad!.state.completedChallenges).toEqual([])
+    // startedAt이 비유한이면 activeChallenge를 null로(오염 방지).
+    const nanStart = migrate({
+      version: 9,
+      savedAt: 1,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        activeChallenge: { id: KNOWN_CHALLENGE, startedAt: NaN },
+      },
+    })
+    expect(nanStart!.state.activeChallenge).toBeNull()
   })
 
   it('v5 세이브는 stardustUpgrades를 채택(미지 id 제거·손상값 제거·maxLevel 클램프)', () => {

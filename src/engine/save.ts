@@ -16,8 +16,9 @@ import { UPGRADES } from '../data/upgrades.ts'
 import { KNOWN_ACHIEVEMENT_IDS } from '../data/achievements.ts'
 import { STARDUST_UPGRADES, stardustUpgradeById } from '../data/stardustShop.ts'
 import { potionById } from '../data/potions.ts'
+import { challengeById, KNOWN_CHALLENGE_IDS } from '../data/challenges.ts'
 import { STRINGS } from '../data/strings.ts'
-import type { BuyAmount, Brewing } from '../store/gameStore.ts'
+import type { BuyAmount, Brewing, ActiveChallenge } from '../store/gameStore.ts'
 
 // 세이브 스키마 버전. 필드 구조를 바꾸면 올리고 migrate에 단계 추가.
 // v2(T5.1): 각성 필드(lifetimeMana/stardust/totalPrestiges) 추가.
@@ -29,7 +30,9 @@ import type { BuyAmount, Brewing } from '../store/gameStore.ts'
 //   mutedPlaytimeMs(음소거 플레이), dragonVisits(드래곤 방문). 신규 업적(숨김 포함) 조건의 진실.
 // v8(E-1.2): 포션 조제 상태 추가 — brewing(조제 중, 타임스탬프 진실 → 오프라인에도 진행), readyPotion(수확 대기),
 //   potionsBrewed(수확 누적 통계). 버프(activeBuffs)는 여전히 세이브 비포함(파생 소멸).
-export const SAVE_VERSION = 8
+// v9(E-2.2): 챌린지 런 추가 — activeChallenge(진행 중 챌린지 {id, startedAt} 또는 null),
+//   completedChallenges(완료 id 목록 → 영구 생산 배율의 진실). 각성해도 유지되는 값이라 세이브 포함.
+export const SAVE_VERSION = 9
 
 // 직렬화 대상(진실만). 파생값은 제외.
 export interface SaveState {
@@ -67,6 +70,10 @@ export interface SaveState {
   brewing: Brewing | null
   readyPotion: string | null
   potionsBrewed: number
+  // 챌린지 런(v9, E-2.2). activeChallenge=진행 중(제약 판정의 진실, startedAt은 timed 판정 기준),
+  // completedChallenges=완료 id 목록(영구 생산 배율 challengeMultiplier의 진실).
+  activeChallenge: ActiveChallenge | null
+  completedChallenges: string[]
 }
 
 // 이 기기의 영속 식별자(D-5.3). localStorage 별도 키에서 읽고, 없으면 UUID를 생성해 저장한다.
@@ -149,6 +156,9 @@ export function toSaveData(state: SaveState, now: number = Date.now()): SaveData
       brewing: state.brewing === null ? null : { ...state.brewing },
       readyPotion: state.readyPotion,
       potionsBrewed: state.potionsBrewed,
+      // 챌린지 런(v9). activeChallenge는 얕은 복사(진실), completedChallenges는 배열 복사.
+      activeChallenge: state.activeChallenge === null ? null : { ...state.activeChallenge },
+      completedChallenges: [...state.completedChallenges],
     },
   }
 }
@@ -240,6 +250,25 @@ function normalizeReadyPotion(v: unknown): string | null {
   return typeof v === 'string' && potionById(v) ? v : null
 }
 
+// activeChallenge 정규화(v9): 알려진 챌린지 id + 유한 startedAt만. 그 외(미지 id·손상값)는 null(진행 안 함).
+function normalizeActiveChallenge(v: unknown): ActiveChallenge | null {
+  if (!isRecord(v)) return null
+  const { id, startedAt } = v
+  if (typeof id !== 'string' || !challengeById(id)) return null
+  if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null
+  return { id, startedAt }
+}
+
+// completedChallenges 정규화(v9): 알려진 챌린지 id 문자열만, 중복 제거.
+function normalizeCompletedChallenges(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  const seen = new Set<string>()
+  for (const id of v) {
+    if (typeof id === 'string' && KNOWN_CHALLENGE_IDS.has(id)) seen.add(id)
+  }
+  return [...seen]
+}
+
 // achievements 정규화: 알려진 업적 id 문자열만, 중복 제거.
 function normalizeAchievements(v: unknown): string[] {
   if (!Array.isArray(v)) return []
@@ -261,6 +290,7 @@ function normalizeAchievements(v: unknown): string[] {
 // v5→v6: deviceId는 현재 기기값(getDeviceId), saveCount=0으로 초기화한다(단조 카운터 출발점).
 // v6→v7: 통계 카운터(meteorsClicked/prestigeCancels/mutedPlaytimeMs/dragonVisits)가 없으므로 0으로 초기화한다.
 // v7→v8: 포션 조제 상태(brewing/readyPotion/potionsBrewed)가 없으므로 null/null/0으로 초기화한다.
+// v8→v9: 챌린지 런(activeChallenge/completedChallenges)이 없으므로 null/[]로 초기화한다.
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
     console.warn(STRINGS.log.save.notObject)
@@ -338,6 +368,12 @@ export function migrate(raw: unknown): SaveData | null {
   const readyPotion = isV8Plus ? normalizeReadyPotion(s.readyPotion) : null
   const potionsBrewed = isV8Plus ? normalizeNonNegInt(s.potionsBrewed, 0) : 0
 
+  // v8 이하엔 챌린지 상태가 없다 → activeChallenge=null, completedChallenges=[].
+  // v9 이상은 검증해 채택(미지 id·손상 startedAt은 떨궈 안전하게 로드).
+  const isV9Plus = raw.version >= 9
+  const activeChallenge = isV9Plus ? normalizeActiveChallenge(s.activeChallenge) : null
+  const completedChallenges = isV9Plus ? normalizeCompletedChallenges(s.completedChallenges) : []
+
   return {
     version: SAVE_VERSION,
     savedAt: raw.savedAt,
@@ -366,6 +402,8 @@ export function migrate(raw: unknown): SaveData | null {
       brewing,
       readyPotion,
       potionsBrewed,
+      activeChallenge,
+      completedChallenges,
     },
   }
 }
@@ -396,6 +434,8 @@ function hasFiniteNumbers(state: SaveState): boolean {
   }
   // 조제 중이면 readyAt도 유한해야 한다(비유한 타임스탬프가 세이브를 오염시키는 것을 막는다).
   if (state.brewing !== null && !Number.isFinite(state.brewing.readyAt)) return false
+  // 챌린지 진행 중이면 startedAt도 유한해야 한다(timed 판정 기준의 오염 방지).
+  if (state.activeChallenge !== null && !Number.isFinite(state.activeChallenge.startedAt)) return false
   for (const count of Object.values(state.generators)) {
     if (typeof count !== 'number' || !Number.isFinite(count)) return false
   }

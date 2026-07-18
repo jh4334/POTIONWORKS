@@ -7,6 +7,7 @@ import {
   type MouseEvent,
 } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
+import { challengeById } from '../data/challenges.ts'
 import { formatNumber } from '../utils/format.ts'
 import { playClick } from '../engine/sound.ts'
 import { STRINGS } from '../data/strings.ts'
@@ -32,6 +33,11 @@ export default function ClickerPanel() {
   // 셀렉터로 부분 구독 — 액션과 clickPower만 가져온다(스토어 통째 구독 금지).
   const click = useGameStore((s) => s.click)
   const clickPower = useGameStore((s) => s.clickPower)
+  // 챌린지 '침묵의 손'(no-click) 진행 중이면 클릭이 무효(마나 0) — 팝·상시 표시를 +0으로(E-2.2).
+  const clicksBlocked = useGameStore(
+    (s) => s.activeChallenge !== null && challengeById(s.activeChallenge.id)?.constraint === 'no-click',
+  )
+  const effectivePower = clicksBlocked ? 0 : clickPower
 
   const [pops, setPops] = useState<Pop[]>([])
   const nextId = useRef(0)
@@ -57,13 +63,13 @@ export default function ClickerPanel() {
       const fontSize = Math.min(POP_FONT_MAX, POP_FONT_MIN + Math.min(combo - 1, POP_FONT_MAX - POP_FONT_MIN))
       const tilt = (Math.random() * 2 - 1) * 10
 
-      const pop: Pop = { id: nextId.current++, x, y, label: `+${formatNumber(clickPower)}`, fontSize, tilt }
+      const pop: Pop = { id: nextId.current++, x, y, label: `+${formatNumber(effectivePower)}`, fontSize, tilt }
       setPops((prev) => [...prev, pop])
 
       // 10연타마다 솥 shake 1회(이미 흔들리는 중이면 유지).
       if (combo > 0 && combo % SHAKE_EVERY === 0) setShaking(true)
     },
-    [click, clickPower],
+    [click, effectivePower],
   )
 
   const handleClick = useCallback(
@@ -123,8 +129,8 @@ export default function ClickerPanel() {
           </span>
         ))}
       </button>
-      {/* 클릭당 획득량 상시 표시(U8). clickPower는 구매/업그레이드 시에만 변함. */}
-      <div className="click-power-label">{STRINGS.clicker.perClick(formatNumber(clickPower))}</div>
+      {/* 클릭당 획득량 상시 표시(U8). 챌린지 '침묵의 손' 중엔 +0. clickPower는 구매/업그레이드 시에만 변함. */}
+      <div className="click-power-label">{STRINGS.clicker.perClick(formatNumber(effectivePower))}</div>
     </div>
   )
 }

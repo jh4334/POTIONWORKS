@@ -14,15 +14,22 @@ import {
 } from '../data/config.ts'
 import { offlineEarnings } from '../engine/offline.ts'
 import { GENERATORS } from '../data/generators.ts'
-import { UPGRADES, resolveUpgrades } from '../data/upgrades.ts'
+import { UPGRADES, resolveUpgrades, type UpgradeDef } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
 import { stardustUpgradeById } from '../data/stardustShop.ts'
 import { goldenEventByKind, type GoldenEventKind } from '../data/events.ts'
 import { potionById } from '../data/potions.ts'
+import {
+  CHALLENGES,
+  challengeById,
+  type ChallengeConstraint,
+  type ChallengeDef,
+} from '../data/challenges.ts'
 import { STRINGS } from '../data/strings.ts'
 import { formatNumber } from '../utils/format.ts'
 import {
   bulkCost,
+  maxAffordable,
   totalMps,
   clickPower as computeClickPower,
   isUpgradeUnlocked,
@@ -34,6 +41,8 @@ import {
   effectiveOfflineCapMs,
   prestigeGain,
   composeGlobalMult,
+  challengeMultiplier,
+  automationLevel,
   potionCost,
   isPotionUnlocked,
   isBrewReady,
@@ -83,6 +92,13 @@ export interface Buff {
 export interface Brewing {
   potionId: string
   readyAt: number // epoch ms — 이 시각 이후 첫 tick에서 완성(readyPotion으로 이동).
+}
+
+// 진행 중 챌린지(E-2.2). 세이브 포함(v9). id=제약 종류의 진실, startedAt=timed 판정 기준(시작 시각).
+// 성공/실패 판정: no-click·no-upgrade는 prestige 시점, timed는 lifetimeMana 임계 도달 시점(withAchievements).
+export interface ActiveChallenge {
+  id: string
+  startedAt: number // epoch ms — 챌린지 시작 시각(각성과 함께 세팅). timed 제한 시간 판정 기준.
 }
 
 export interface GameState {
@@ -161,6 +177,10 @@ export interface GameState {
   brewing: Brewing | null
   readyPotion: string | null
   potionsBrewed: number
+  // 챌린지 런(E-2.2, 세이브 v9). activeChallenge=진행 중(제약 판정·timed 기준의 진실),
+  // completedChallenges=완료 id 목록(challengeMultiplier로 영구 생산 배율에 합류, 각성해도 유지).
+  activeChallenge: ActiveChallenge | null
+  completedChallenges: string[]
   // 솥 클릭: 마나를 clickPower만큼 증가(누적 마나도 함께).
   click: () => void
   // 시설 구매: 비용 확인 후 마나 차감 + 보유 증가 + 파생값 재계산.
@@ -182,6 +202,10 @@ export interface GameState {
   applyOfflineEarnings: (amount: number, now: number, elapsedMs: number, cappedMs: number) => void
   // 60초 미만 부재 조용한 지급(D-1.5): 마나 적립 + lastTick=now, 팝업 없음. 이중 지급 금지.
   applySilentEarnings: (amount: number, now: number) => void
+  // 오프라인 자동화(E-2.1 공방 관리인): 로드 시점 마나로 업그레이드·시설을 1회 그리디 자동 구매.
+  //   레벨 단계로 범위가 커진다(Lv1 배율 업그레이드 · Lv2 +클릭/시너지 · Lv3 +시설). autosave loadGame이
+  //   오프라인 정산 직후 호출한다. 정밀 시뮬이 아니라 로드 시점 마나 기준 1회 패스면 충분(레벨 0이면 무동작).
+  applyOfflineAutomation: () => void
   // 오프라인 팝업 닫기.
   dismissOffline: () => void
   // 세이브 로드 실패 표시 세팅/해제(loadGame이 corrupt 감지 시 mark, App 배너 닫기 시 dismiss).
@@ -194,7 +218,11 @@ export interface GameState {
   // 각성(T5.1): 조건(lifetimeMana >= 임계) 충족 시 stardust += stardustFor(lifetimeMana),
   //   totalPrestiges += 1, 그리고 마나/시설/업그레이드/buyAmount/lifetimeMana 초기화.
   //   유지: stardust, totalPrestiges, 업적·통계. 리셋 후 파생값(MPS·clickPower) 재계산.
-  prestige: () => void
+  //   (E-2.2) challengeId를 넘기면 각성 리셋과 함께 그 챌린지를 시작한다. 진행 중이던 제약 챌린지
+  //   (no-click·no-upgrade)를 지키며 각성에 도달했다면 이 시점에 완료 처리한다(prestige에서 판정).
+  prestige: (challengeId?: string) => void
+  // 챌린지 포기(E-2.2): 보상 없이 activeChallenge 해제. UI에서 확인 후 호출한다.
+  abandonChallenge: () => void
   // 각성 확인 모달 취소(E-1.3): prestigeCancels += 1. 숨겨진 업적 '미련의 대가'(3회) 판정을 위해 액션으로 센다.
   cancelPrestige: () => void
   // 포션 조제 시작(E-1.2): 비용(현재 MPS × costMpsSeconds, 하한 적용) 차감 + brewing 세팅.
@@ -276,6 +304,8 @@ function createInitialState() {
     brewing: null as Brewing | null,
     readyPotion: null as string | null,
     potionsBrewed: 0,
+    activeChallenge: null as ActiveChallenge | null,
+    completedChallenges: [] as string[],
   }
 }
 
@@ -296,6 +326,7 @@ interface RecalcContext {
   stardust: number
   achievementCount: number
   stardustUpgrades: Record<string, number>
+  completedChallenges: string[] // 완료 챌린지(영구 생산 배율, E-2.2) — globalMult에 합성.
   buffMult?: number // 활성 생산 버프면 >1, 아니면 1(기본). globalMult(MPS)에 합성.
   clickBuffMult?: number // 활성 클릭 버프면 >1, 아니면 1(기본). 클릭 파워 최종값에 곱함.
 }
@@ -310,8 +341,11 @@ function recalcDerived(ctx: RecalcContext): {
     stardust: ctx.stardust,
     achievementCount: ctx.achievementCount,
     buffMult: ctx.buffMult ?? 1,
+    // 완료 챌린지 영구 배율(E-2.2). 데이터 결합은 여기(store)서 — challengeMultiplier는 순수 함수.
+    challengeMult: challengeMultiplier(ctx.completedChallenges, CHALLENGES),
   })
-  const manaPerSecond = totalMps(ctx.generators, GENERATORS, ups, globalMult)
+  // 생산 트리(별의 축복, E-2.1)의 티어별 배율은 totalMps가 stardustUpgrades로 반영한다(개당 실효값·델타와 일관).
+  const manaPerSecond = totalMps(ctx.generators, GENERATORS, ups, globalMult, ctx.stardustUpgrades)
   const clickPower = computeClickPower(
     ctx.basePower,
     manaPerSecond,
@@ -349,14 +383,79 @@ function addBuff(buffs: Buff[], buff: Buff): Buff[] {
 // 토스트 id 카운터(UI 전용, 세이브 비포함). 모듈 스코프면 충분하다.
 let nextToastId = 0
 
-// 값이 변하는 액션 끝에서 호출: 병합된 상태(prev + partial)로 미달성 업적을 검사하고,
-// 새로 달성된 게 있으면 achievements 추가 + 토스트 push + burstKey 증가 + 파생값 재계산을
-// partial에 얹어 돌려준다(없으면 partial 그대로). 순수하게 유지해 액션에서만 상태를 만든다.
+// --- 챌린지(E-2.2) 헬퍼 ---
+// 진행 중 챌린지가 특정 제약(no-click·no-upgrade)인지. click/buyUpgrade 액션의 무효화 판정에 쓴다.
+function isChallengeConstraint(
+  active: ActiveChallenge | null,
+  constraint: ChallengeConstraint,
+): boolean {
+  if (!active) return false
+  return challengeById(active.id)?.constraint === constraint
+}
+
+function challengeDoneToast(def: ChallengeDef): AchievementToast {
+  return {
+    id: nextToastId++,
+    name: '',
+    icon: def.icon,
+    title: STRINGS.toast.challengeDoneTitle(def.name),
+    sub: STRINGS.toast.challengeDoneSub(Math.round(def.reward * 100)),
+  }
+}
+function challengeFailToast(def: ChallengeDef): AchievementToast {
+  return {
+    id: nextToastId++,
+    name: '',
+    icon: def.icon,
+    title: STRINGS.toast.challengeFailTitle(def.name),
+    sub: STRINGS.toast.challengeFailSub,
+  }
+}
+
+// timed 챌린지 판정(E-2.2): activeChallenge가 timed이고 이번 상태에서 각성 임계(누적 1e9)에 도달했으면
+// startedAt~now 경과로 성공/실패를 확정하고 해제한다. 성공 시 completedChallenges에 추가(영구 배율 변화),
+// 실패 시 해제만. 임계 미달·비timed·비활성이면 null(변경 없음). 시각 진실은 Date.now()(타임스탬프 원칙).
+function resolveTimedChallenge(s: {
+  activeChallenge: ActiveChallenge | null
+  lifetimeMana: number
+  completedChallenges: string[]
+  toasts: AchievementToast[]
+}): Partial<GameState> | null {
+  const active = s.activeChallenge
+  if (!active) return null
+  const def = challengeById(active.id)
+  if (!def || def.constraint !== 'timed') return null
+  if (s.lifetimeMana < PRESTIGE_THRESHOLD) return null
+  const withinTime = Date.now() - active.startedAt <= (def.timeLimitMs ?? 0)
+  if (withinTime) {
+    const completed = s.completedChallenges.includes(def.id)
+      ? s.completedChallenges
+      : [...s.completedChallenges, def.id]
+    return {
+      activeChallenge: null,
+      completedChallenges: completed,
+      toasts: [...s.toasts, challengeDoneToast(def)],
+    }
+  }
+  return { activeChallenge: null, toasts: [...s.toasts, challengeFailToast(def)] }
+}
+
+// 값이 변하는 액션 끝에서 호출: 병합된 상태(prev + partial)로 timed 챌린지 판정 + 미달성 업적을 검사하고,
+// 변한 게 있으면 관련 필드·토스트·burstKey·파생값 재계산을 partial에 얹어 돌려준다(없으면 partial 그대로).
+// 순수하게 유지해 액션에서만 상태를 만든다.
 function withAchievements<T extends Partial<GameState>>(
   prev: GameState,
   partial: T,
 ): T | (T & Partial<GameState>) {
-  const next = { ...prev, ...partial }
+  let next = { ...prev, ...partial }
+  // (E-2.2) timed 챌린지 판정 — 임계 도달 시 성공/실패 확정·해제. 성공하면 생산 배율이 바뀌어 재계산이 필요하다.
+  const timed = resolveTimedChallenge(next)
+  let challengeCompleted = false
+  if (timed) {
+    partial = { ...partial, ...timed }
+    next = { ...prev, ...partial }
+    challengeCompleted = Array.isArray(timed.completedChallenges) // completedChallenges가 있으면 성공(배율 변화)
+  }
   const stats = {
     totalClicks: next.totalClicks,
     generators: next.generators,
@@ -376,17 +475,22 @@ function withAchievements<T extends Partial<GameState>>(
   for (const def of ACHIEVEMENTS) {
     if (!owned.has(def.id) && isAchievementUnlocked(def, stats)) unlocked.push(def)
   }
-  if (unlocked.length === 0) return partial
+  // 업적도, 챌린지 성공도 없으면 partial 그대로(챌린지 실패 해제분은 partial에 이미 반영됨).
+  if (unlocked.length === 0 && !challengeCompleted) return partial
 
-  const achievements = [...next.achievements, ...unlocked.map((d) => d.id)]
-  const toasts = [...next.toasts, ...unlocked.map((d) => ({ id: nextToastId++, name: d.name }))]
+  const achievements =
+    unlocked.length > 0 ? [...next.achievements, ...unlocked.map((d) => d.id)] : next.achievements
+  const toasts =
+    unlocked.length > 0
+      ? [...next.toasts, ...unlocked.map((d) => ({ id: nextToastId++, name: d.name }))]
+      : next.toasts
   return {
     ...partial,
     achievements,
     toasts,
-    burstKey: next.burstKey + 1, // 마일스톤 파티클 버스트 트리거(T6.2)
-    // 업적수가 늘었으므로 생산 배율 재계산 — 늘어난 mps로 다음 tick/액션에서 연쇄 달성이 이어질 수 있다.
-    // 활성 버프(next.activeBuffs)도 반영해 재계산 — 버프 중 업적 달성이 버프를 지우지 않게 한다.
+    burstKey: next.burstKey + 1, // 마일스톤·챌린지 완료 파티클 버스트 트리거(T6.2)
+    // 업적수/챌린지 완료가 반영된 생산 배율 재계산 — 연쇄 달성·챌린지 보상이 즉시 MPS에 든다.
+    // 활성 버프(next.activeBuffs)도 반영해 재계산 — 버프 중 달성이 버프를 지우지 않게 한다.
     ...recalcDerived({
       generators: next.generators,
       upgradeIds: next.upgrades,
@@ -394,6 +498,7 @@ function withAchievements<T extends Partial<GameState>>(
       stardust: next.stardust,
       achievementCount: achievements.length,
       stardustUpgrades: next.stardustUpgrades,
+      completedChallenges: next.completedChallenges,
       buffMult: productionBuffMult(next.activeBuffs),
       clickBuffMult: clickBuffMult(next.activeBuffs),
     }),
@@ -407,6 +512,8 @@ export const useGameStore = create<GameState>()((set) => ({
   // 값이 변하므로 끝에서 업적 검사(즉시).
   click: () =>
     set((s) => {
+      // 챌린지 '침묵의 손'(no-click) 진행 중이면 클릭 무효(마나 0, E-2.2). UI는 팝을 +0으로 표시한다.
+      if (isChallengeConstraint(s.activeChallenge, 'no-click')) return s
       // 콤보: 마지막 클릭 이후 창(1초) 안이면 누적, 끊겼으면 1로 리셋. 숨겨진 업적 '폭풍 젓기'(100연타) 판정.
       // 진실은 타임스탬프 — UI(ClickerPanel) ref가 아니라 스토어가 판정한다(세이브 비포함 런타임 상태).
       const now = Date.now()
@@ -440,6 +547,7 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust: s.stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades: s.stardustUpgrades,
+          completedChallenges: s.completedChallenges,
           buffMult: productionBuffMult(s.activeBuffs),
           clickBuffMult: clickBuffMult(s.activeBuffs),
         }),
@@ -449,6 +557,8 @@ export const useGameStore = create<GameState>()((set) => ({
   buyUpgrade: (id) =>
     set((s) => {
       if (s.upgrades.includes(id)) return s // 이미 구매됨
+      // 챌린지 '금욕의 공방'(no-upgrade) 진행 중이면 구매 무효(E-2.2). UI에서도 막지만 액션에서도 방어.
+      if (isChallengeConstraint(s.activeChallenge, 'no-upgrade')) return s
       const def = UPGRADES.find((u) => u.id === id)
       if (!def) return s
       // 해금 조건은 UI에서 숨기지만 액션에서도 방어적으로 검증한다.
@@ -465,6 +575,7 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust: s.stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades: s.stardustUpgrades,
+          completedChallenges: s.completedChallenges,
           buffMult: productionBuffMult(s.activeBuffs),
           clickBuffMult: clickBuffMult(s.activeBuffs),
         }),
@@ -494,6 +605,7 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades,
+          completedChallenges: s.completedChallenges,
           buffMult: productionBuffMult(s.activeBuffs),
           clickBuffMult: clickBuffMult(s.activeBuffs),
         }),
@@ -566,6 +678,7 @@ export const useGameStore = create<GameState>()((set) => ({
             stardust: s.stardust,
             achievementCount: s.achievements.length,
             stardustUpgrades: s.stardustUpgrades,
+            completedChallenges: s.completedChallenges,
             buffMult: productionBuffMult(stillActive),
             clickBuffMult: clickBuffMult(stillActive),
           }),
@@ -613,6 +726,9 @@ export const useGameStore = create<GameState>()((set) => ({
         brewing: st.brewing,
         readyPotion: st.readyPotion,
         potionsBrewed: st.potionsBrewed,
+        // 챌린지 런(v9): activeChallenge/completedChallenges를 세이브에서 복원(제약·영구 배율의 진실).
+        activeChallenge: st.activeChallenge,
+        completedChallenges: st.completedChallenges,
         // saveCount는 단조 카운터라 세이브 값에서 이어간다(로드 후 저장이 이어서 +1). deviceId는 이 기기 값 유지.
         saveCount: st.saveCount,
         // 로드 시 토스트는 띄우지 않는다(이미 달성한 것). 스로틀 시각도 초기화.
@@ -625,6 +741,7 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust: st.stardust,
           achievementCount: achievements.length,
           stardustUpgrades,
+          completedChallenges: st.completedChallenges,
           buffMult: productionBuffMult(s.activeBuffs),
           clickBuffMult: clickBuffMult(s.activeBuffs),
         }),
@@ -658,6 +775,92 @@ export const useGameStore = create<GameState>()((set) => ({
       }),
     ),
 
+  // 오프라인 자동화(E-2.1 공방 관리인). 로드 시점 마나로 업그레이드·시설을 1회 그리디 자동 구매한다.
+  //  - Lv1: 시설 배율 업그레이드(generatorMult — 마일스톤·초반 배율)만.
+  //  - Lv2: +클릭·시너지 업그레이드.
+  //  - Lv3: +시설 그리디 매수(높은 티어부터 살 수 있는 만큼), 이후 새로 해금된 배율 업그레이드도 한 번 더.
+  // 정밀 시뮬이 아니라 "로드 시점 마나로 한 번" 사는 그리디 패스 — 자동저장 loadGame이 오프라인 지급 직후 호출한다.
+  applyOfflineAutomation: () =>
+    set((s) => {
+      const level = automationLevel(s.stardustUpgrades)
+      if (level <= 0) return s
+
+      let mana = s.mana
+      const generators = { ...s.generators }
+      const upgrades = [...s.upgrades]
+      const owned = new Set(upgrades)
+      const stardustLevels = s.stardustUpgrades
+      // 배율(globalMult)은 자동화 동안 불변(스타더스트·업적·챌린지·버프 고정) — 해금 판정 mps에 반영해 정확히 산다.
+      const globalMult = composeGlobalMult({
+        stardust: s.stardust,
+        achievementCount: s.achievements.length,
+        buffMult: productionBuffMult(s.activeBuffs),
+        challengeMult: challengeMultiplier(s.completedChallenges, CHALLENGES),
+      })
+      const computeMps = () =>
+        totalMps(generators, GENERATORS, resolveUpgrades(upgrades), globalMult, stardustLevels)
+      let mps = computeMps()
+
+      // 레벨별 자동 구매 대상 업그레이드 종류.
+      const kindAllowed = (kind: UpgradeDef['effect']['kind']): boolean =>
+        kind === 'generatorMult' ? level >= 1 : level >= 2
+
+      // 해금·비용을 만족하는 업그레이드를 더 살 게 없을 때까지 반복 매수(배율 상승이 새 해금을 연다).
+      const buyUpgrades = () => {
+        let changed = true
+        while (changed) {
+          changed = false
+          for (const u of UPGRADES) {
+            if (owned.has(u.id)) continue
+            if (!kindAllowed(u.effect.kind)) continue
+            if (!isUpgradeUnlocked(u, generators, mps)) continue
+            if (mana < u.cost) continue
+            mana -= u.cost
+            owned.add(u.id)
+            upgrades.push(u.id)
+            changed = true
+          }
+          if (changed) mps = computeMps()
+        }
+      }
+
+      buyUpgrades()
+
+      if (level >= 3) {
+        // 시설 그리디 1회 패스: 상위 티어부터 살 수 있는 만큼 산다(큰 마나를 상위 티어에 우선 투입).
+        for (let i = GENERATORS.length - 1; i >= 0; i -= 1) {
+          const g = GENERATORS[i]
+          const have = generators[g.id] ?? 0
+          const n = maxAffordable(g.baseCost, have, mana)
+          if (n > 0) {
+            mana -= bulkCost(g.baseCost, have, n)
+            generators[g.id] = have + n
+          }
+        }
+        // 시설이 늘어 새로 해금된 배율 업그레이드를 한 번 더 매수.
+        mps = computeMps()
+        buyUpgrades()
+      }
+
+      // 구매로 파생값이 바뀌었고 시설/MPS 업적이 달성될 수 있어 withAchievements로 감싼다.
+      return withAchievements(s, {
+        mana,
+        generators,
+        upgrades,
+        ...recalcDerived({
+          generators,
+          upgradeIds: upgrades,
+          basePower: s.basePower,
+          stardust: s.stardust,
+          achievementCount: s.achievements.length,
+          stardustUpgrades: s.stardustUpgrades,
+          completedChallenges: s.completedChallenges,
+          buffMult: productionBuffMult(s.activeBuffs),
+          clickBuffMult: clickBuffMult(s.activeBuffs),
+        }),
+      })
+    }),
+
   dismissOffline: () => set({ offlineGain: null }),
 
   markLoadFailed: () => set({ loadFailed: true }),
@@ -671,13 +874,38 @@ export const useGameStore = create<GameState>()((set) => ({
   // 각성: 이번 생 누적 마나로 스타더스트를 얻고 진행을 초기화한다.
   // 조건 미달(lifetimeMana < 임계 또는 보상 0)이면 아무것도 하지 않는다(UI에서도 막지만 방어).
   // 유지: stardust, totalPrestiges, 업적·통계(totalClicks/totalLifetimeMana). 각성 자체가 업적을 달성시킬 수 있어 검사.
-  prestige: () =>
+  prestige: (challengeId) =>
     set((s) => {
       if (s.lifetimeMana < PRESTIGE_THRESHOLD) return s
       // 첫 각성(totalPrestiges===0)이면 첫 각성 보너스가 포함된다(D-3.2). 미리보기와 동일 순수 함수.
       const gained = prestigeGain(s.lifetimeMana, s.totalPrestiges)
       if (gained <= 0) return s
       const stardust = s.stardust + gained
+
+      // (E-2.2) 제약 챌린지(no-click·no-upgrade) 성공 판정: 그 생을 제약 지키며 각성에 도달 = 성공.
+      //   제약은 click/buyUpgrade 액션이 그 생 내내 강제하므로, 여기 도달 자체가 준수의 증거다.
+      //   timed 챌린지는 임계 도달 시점(withAchievements)에서 이미 판정돼 해제됐어야 한다.
+      let completedChallenges = s.completedChallenges
+      let toasts = s.toasts
+      const active = s.activeChallenge
+      if (active) {
+        const def = challengeById(active.id)
+        if (
+          def &&
+          (def.constraint === 'no-click' || def.constraint === 'no-upgrade') &&
+          !completedChallenges.includes(def.id)
+        ) {
+          completedChallenges = [...completedChallenges, def.id]
+          toasts = [...toasts, challengeDoneToast(def)]
+        }
+      }
+      // 새 챌린지 시작(선택 시): 미완료·유효 id면 각성 리셋과 함께 시작. 아니면 해제(null).
+      const startDef = challengeId ? challengeById(challengeId) : undefined
+      const activeChallenge: ActiveChallenge | null =
+        startDef && !completedChallenges.includes(startDef.id)
+          ? { id: startDef.id, startedAt: Date.now() }
+          : null
+
       // 리셋: 마나/시설/업그레이드/buyAmount/lifetimeMana/clickPower(basePower). 유지: stardust, 상점, totalPrestiges.
       // 상점 '견습 마법사단' 레벨만큼 견습생을 보유한 채 시작한다(리빌드 지루함 해소, D-3.1).
       const generators = initialGenerators()
@@ -694,6 +922,9 @@ export const useGameStore = create<GameState>()((set) => ({
         buyAmount: 1 as BuyAmount,
         stardust,
         totalPrestiges,
+        completedChallenges,
+        activeChallenge,
+        toasts,
         lastTick: Date.now(),
         burstKey: s.burstKey + 1, // 각성 순간에도 마일스톤 파티클 버스트(T6.2)
         ...recalcDerived({
@@ -703,11 +934,15 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades: s.stardustUpgrades,
+          completedChallenges,
           buffMult: productionBuffMult(s.activeBuffs),
           clickBuffMult: clickBuffMult(s.activeBuffs),
         }),
       })
     }),
+
+  // 챌린지 포기(E-2.2): 보상 없이 activeChallenge만 해제한다(생산 배율 불변이라 재계산 불필요).
+  abandonChallenge: () => set((s) => (s.activeChallenge === null ? s : { activeChallenge: null })),
 
   // 각성 확인 모달 취소(E-1.3): prestigeCancels += 1. 숨겨진 업적 '미련의 대가'(3회) 판정을 위해 액션으로 센다.
   // withAchievements로 감싸 취소 3회째에 즉시 업적을 잡는다(다른 값은 건드리지 않음).
@@ -789,6 +1024,7 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust: s.stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades: s.stardustUpgrades,
+          completedChallenges: s.completedChallenges,
           buffMult: productionBuffMult(activeBuffs),
           clickBuffMult: clickBuffMult(activeBuffs),
         }),
@@ -857,6 +1093,7 @@ export const useGameStore = create<GameState>()((set) => ({
           stardust: s.stardust,
           achievementCount: s.achievements.length,
           stardustUpgrades: s.stardustUpgrades,
+          completedChallenges: s.completedChallenges,
           buffMult: productionBuffMult(activeBuffs),
           clickBuffMult: clickBuffMult(activeBuffs),
         }),

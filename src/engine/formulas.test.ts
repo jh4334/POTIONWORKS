@@ -22,6 +22,9 @@ import {
   nextStardustAt,
   prestigeGain,
   composeGlobalMult,
+  challengeMultiplier,
+  stardustGeneratorMult,
+  automationLevel,
   potionCost,
   isPotionUnlocked,
   isBrewReady,
@@ -29,6 +32,7 @@ import {
   productionBuffBonus,
   type AchievementStats,
 } from './formulas.ts'
+import { CHALLENGES } from '../data/challenges.ts'
 import { POTIONS, type PotionDef } from '../data/potions.ts'
 import { COST_GROWTH, GENERATORS, type GeneratorDef, type GeneratorId } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
@@ -436,6 +440,62 @@ describe('startingApprentices', () => {
   it('견습 마법사단 레벨 × 5', () => {
     expect(startingApprentices({})).toBe(0)
     expect(startingApprentices({ 'starting-apprentices': 4 })).toBe(20)
+  })
+})
+
+describe('stardustGeneratorMult (E-2.1 생산 트리)', () => {
+  it('레벨 0/없음이면 1', () => {
+    expect(stardustGeneratorMult('apprentice', {})).toBeCloseTo(1)
+    expect(stardustGeneratorMult('apprentice', { 'blessing-apprentice': 0 })).toBeCloseTo(1)
+  })
+
+  it('별의 축복 레벨만큼 ×1.5^Lv (해당 티어에만)', () => {
+    expect(stardustGeneratorMult('apprentice', { 'blessing-apprentice': 1 })).toBeCloseTo(1.5)
+    expect(stardustGeneratorMult('apprentice', { 'blessing-apprentice': 2 })).toBeCloseTo(2.25)
+    // 다른 티어 축복은 무관.
+    expect(stardustGeneratorMult('cauldron', { 'blessing-apprentice': 3 })).toBeCloseTo(1)
+  })
+
+  it('maxLevel(3) 초과 레벨(손상)은 클램프', () => {
+    expect(stardustGeneratorMult('apprentice', { 'blessing-apprentice': 99 })).toBeCloseTo(1.5 ** 3)
+  })
+
+  it('generatorMultiplier에 stardustLevels를 넘기면 업그레이드 배율과 곱해진다', () => {
+    // ×2 마일스톤 × 별의 축복 ×1.5 = 3.
+    expect(
+      generatorMultiplier('apprentice', [mult2('apprentice')], {}, { 'blessing-apprentice': 1 }),
+    ).toBeCloseTo(3)
+  })
+})
+
+describe('automationLevel (E-2.1 공방 관리인)', () => {
+  it('없으면 0, 레벨을 그대로(내림)', () => {
+    expect(automationLevel({})).toBe(0)
+    expect(automationLevel({ 'workshop-manager': 2 })).toBe(2)
+  })
+  it('maxLevel(3) 초과는 클램프', () => {
+    expect(automationLevel({ 'workshop-manager': 99 })).toBe(3)
+  })
+})
+
+describe('challengeMultiplier (E-2.2)', () => {
+  it('완료 없으면 1', () => {
+    expect(challengeMultiplier([], CHALLENGES)).toBeCloseTo(1)
+  })
+  it('완료 보상 합을 1에 더한다', () => {
+    expect(challengeMultiplier(['silent-hands'], CHALLENGES)).toBeCloseTo(1.25)
+    expect(challengeMultiplier(['silent-hands', 'ascetic'], CHALLENGES)).toBeCloseTo(1.5)
+    // silent-hands(+25%) + time-trial(+50%) = +75%.
+    expect(challengeMultiplier(['silent-hands', 'time-trial'], CHALLENGES)).toBeCloseTo(1.75)
+  })
+  it('미지 id는 무시', () => {
+    expect(challengeMultiplier(['no-such', 'silent-hands'], CHALLENGES)).toBeCloseTo(1.25)
+  })
+  it('composeGlobalMult에 challengeMult로 합류', () => {
+    // stardust 5 → 1.5, 업적 0 → 1, 버프 없음, 챌린지 ×1.5.
+    expect(
+      composeGlobalMult({ stardust: 5, achievementCount: 0, challengeMult: 1.5 }),
+    ).toBeCloseTo(1.5 * 1.5)
   })
 })
 

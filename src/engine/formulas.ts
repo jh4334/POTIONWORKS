@@ -17,6 +17,7 @@ import {
   STARDUST_COST_GROWTH,
   type StardustUpgradeDef,
 } from '../data/stardustShop.ts'
+import type { ChallengeDef } from '../data/challenges.ts'
 
 // ceil 정책: 비용은 항상 정수로 올림한다(표시·구매 동일 값).
 // 단건 구매 가격 = baseCost × 1.15^보유수.
@@ -66,10 +67,13 @@ export function maxAffordable(baseCost: number, owned: number, mana: number): nu
 //   - generatorMult(×2 마일스톤): 곱으로 누적
 //   - synergy: (1 + sourceCount × percentPerSource/100) 곱
 // 다른 티어를 대상으로 한 효과는 무시한다.
+// (E-2.1) stardustLevels가 있으면 생산 트리(별의 축복)의 티어별 배율(×mult^레벨)도 곱한다 —
+//   업그레이드 배율과 동일 경로라 헤더 MPS·개당 실효값·구매 델타가 모두 일관되게 반영된다.
 export function generatorMultiplier(
   generatorId: string,
   purchasedUpgrades: UpgradeDef[],
   counts: Record<string, number>,
+  stardustLevels: Record<string, number> = {},
 ): number {
   let mult = 1
   for (const u of purchasedUpgrades) {
@@ -93,7 +97,31 @@ export function generatorMultiplier(
       }
     }
   }
+  return mult * stardustGeneratorMult(generatorId, stardustLevels)
+}
+
+// 생산 트리(별의 축복, E-2.1)의 특정 티어 배율 = Π(mult^레벨). 상점 레벨 맵을 받는 순수 함수.
+// 시설 참조는 데이터(effect.generatorId)로 하고 clampLevel로 손상 세이브를 방어한다.
+export function stardustGeneratorMult(
+  generatorId: string,
+  levels: Record<string, number>,
+): number {
+  let mult = 1
+  for (const def of STARDUST_UPGRADES) {
+    const e = def.effect
+    if (e.kind === 'generatorMult' && e.generatorId === generatorId) {
+      mult *= e.mult ** clampLevel(def, levels[def.id] ?? 0)
+    }
+  }
   return mult
+}
+
+// 자동화(공방 관리인, E-2.1) 레벨(0~maxLevel). 오프라인 자동 구매 단계 판정에 쓴다.
+export function automationLevel(levels: Record<string, number>): number {
+  for (const def of STARDUST_UPGRADES) {
+    if (def.effect.kind === 'automation') return clampLevel(def, levels[def.id] ?? 0)
+  }
+  return 0
 }
 
 // 전체 MPS = Σ (보유수 × 개당 baseMps × 티어 배율) × 전체 배율.
@@ -105,10 +133,12 @@ export function totalMps(
   generators: readonly GeneratorDef[],
   purchasedUpgrades: UpgradeDef[] = [],
   globalMult: number = 1,
+  stardustLevels: Record<string, number> = {},
 ): number {
   let total = 0
   for (const g of generators) {
-    total += (counts[g.id] ?? 0) * g.baseMps * generatorMultiplier(g.id, purchasedUpgrades, counts)
+    total +=
+      (counts[g.id] ?? 0) * g.baseMps * generatorMultiplier(g.id, purchasedUpgrades, counts, stardustLevels)
   }
   return total * globalMult
 }
@@ -121,8 +151,11 @@ export function effectiveGeneratorMps(
   purchasedUpgrades: UpgradeDef[],
   counts: Record<string, number>,
   globalMult: number = 1,
+  stardustLevels: Record<string, number> = {},
 ): number {
-  return def.baseMps * generatorMultiplier(def.id, purchasedUpgrades, counts) * globalMult
+  return (
+    def.baseMps * generatorMultiplier(def.id, purchasedUpgrades, counts, stardustLevels) * globalMult
+  )
 }
 
 // count개 추가 구매 시 전체 MPS 증가분(델타). 시너지(다른 티어 배율 변화)까지 정확히 반영하기 위해
@@ -134,13 +167,15 @@ export function mpsDelta(
   generators: readonly GeneratorDef[],
   purchasedUpgrades: UpgradeDef[] = [],
   globalMult: number = 1,
+  stardustLevels: Record<string, number> = {},
 ): number {
-  const before = totalMps(counts, generators, purchasedUpgrades, globalMult)
+  const before = totalMps(counts, generators, purchasedUpgrades, globalMult, stardustLevels)
   const after = totalMps(
     { ...counts, [generatorId]: (counts[generatorId] ?? 0) + addCount },
     generators,
     purchasedUpgrades,
     globalMult,
+    stardustLevels,
   )
   return after - before
 }
@@ -187,14 +222,30 @@ export interface GlobalMultContext {
   stardust: number
   achievementCount: number
   buffMult?: number // 활성 버프 배율(없으면 1).
+  challengeMult?: number // 완료 챌린지 영구 배율(없으면 1, E-2.2).
 }
 
 export function composeGlobalMult({
   stardust,
   achievementCount,
   buffMult = 1,
+  challengeMult = 1,
 }: GlobalMultContext): number {
-  return stardustMultiplier(stardust) * achievementMultiplier(achievementCount) * buffMult
+  return (
+    stardustMultiplier(stardust) * achievementMultiplier(achievementCount) * buffMult * challengeMult
+  )
+}
+
+// 완료 챌린지 영구 생산 배율 = 1 + Σ(완료 챌린지 reward) (E-2.2). 순수 함수.
+// defs를 인자로 받아 데이터 결합을 호출부(store)로 넘긴다 — 순환 import 없이 데이터 변경에 함께 검증된다.
+// 미지/미완료 id는 무시하고, 완료 id의 reward만 합산한다(중복 완료는 완료 목록이 중복을 막으므로 무관).
+export function challengeMultiplier(completedIds: string[], defs: ChallengeDef[]): number {
+  const owned = new Set(completedIds)
+  let bonus = 0
+  for (const def of defs) {
+    if (owned.has(def.id)) bonus += def.reward
+  }
+  return 1 + bonus
 }
 
 // 업적 달성 판정에 필요한 통계 스냅샷(순수 함수 입력).
@@ -316,6 +367,8 @@ export function stardustClickPercent(levels: Record<string, number>): number {
       case 'startingApprentices':
       case 'offlineEfficiency':
       case 'offlineCap':
+      case 'generatorMult':
+      case 'automation':
         break // 이 함수와 무관.
       default: {
         const _exhaustive: never = e
@@ -339,6 +392,8 @@ export function startingApprentices(levels: Record<string, number>): number {
       case 'clickMpsPercent':
       case 'offlineEfficiency':
       case 'offlineCap':
+      case 'generatorMult':
+      case 'automation':
         break // 이 함수와 무관.
       default: {
         const _exhaustive: never = e
@@ -366,6 +421,8 @@ export function effectiveOfflineEfficiency(
       case 'startingApprentices':
       case 'clickMpsPercent':
       case 'offlineCap':
+      case 'generatorMult':
+      case 'automation':
         break // 이 함수와 무관.
       default: {
         const _exhaustive: never = e
@@ -392,6 +449,8 @@ export function effectiveOfflineCapMs(
       case 'startingApprentices':
       case 'clickMpsPercent':
       case 'offlineEfficiency':
+      case 'generatorMult':
+      case 'automation':
         break // 이 함수와 무관.
       default: {
         const _exhaustive: never = e

@@ -5,6 +5,7 @@ import { ACHIEVEMENTS } from './achievements.ts'
 import { STARDUST_UPGRADES } from './stardustShop.ts'
 import { GOLDEN_EVENTS, pickGoldenEvent, goldenEventByKind } from './events.ts'
 import { POTIONS, potionById } from './potions.ts'
+import { CHALLENGES, challengeById } from './challenges.ts'
 
 // 데이터 참조 무결성(D-5.1). GeneratorId 타입화가 컴파일 단계에서 오타를 막지만,
 // 런타임 데이터(파생 생성·수동 정의)가 실제 GENERATORS와 일치하는지·id 중복이 없는지 테스트로 고정한다.
@@ -136,9 +137,54 @@ describe('포션 데이터 무결성(E-1.2)', () => {
 })
 
 describe('스타더스트 상점 무결성', () => {
-  // 현재 StardustEffect는 시설 id를 데이터로 참조하지 않는다(효과가 코드로 대상 시설을 결정).
-  // 따라서 상점은 id 중복만 검증한다 — 시설 참조 필드가 생기면 위 패턴대로 확장한다.
   it('상점 id에 중복이 없다', () => {
     expect(duplicates(STARDUST_UPGRADES.map((u) => u.id))).toEqual([])
+  })
+
+  // E-2.1 생산 트리(generatorMult 효과)의 시설 참조가 GENERATORS에 존재하는지 자동 검증한다
+  // (업그레이드 무결성과 동일 패턴 — 데이터 참조 오타를 런타임 테스트가 잡는다).
+  it('모든 generatorMult 효과의 시설 참조가 GENERATORS에 존재한다', () => {
+    for (const u of STARDUST_UPGRADES) {
+      if (u.effect.kind === 'generatorMult') {
+        expect(GENERATOR_IDS.has(u.effect.generatorId)).toBe(true)
+      }
+    }
+  })
+
+  it('생산 트리는 티어마다 1종(8종) + 자동화 1종이 있다(E-2.1)', () => {
+    expect(STARDUST_UPGRADES.filter((u) => u.group === 'production').length).toBe(GENERATORS.length)
+    expect(STARDUST_UPGRADES.filter((u) => u.effect.kind === 'generatorMult').length).toBe(
+      GENERATORS.length,
+    )
+    expect(STARDUST_UPGRADES.filter((u) => u.effect.kind === 'automation').length).toBe(1)
+  })
+
+  it('모든 상점 항목의 baseCost·maxLevel은 유효(양수, maxLevel은 null 또는 양수)', () => {
+    for (const u of STARDUST_UPGRADES) {
+      expect(u.baseCost).toBeGreaterThan(0)
+      if (u.maxLevel !== null) expect(u.maxLevel).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('챌린지 데이터 무결성(E-2.2)', () => {
+  it('챌린지 id에 중복이 없다', () => {
+    expect(duplicates(CHALLENGES.map((c) => c.id))).toEqual([])
+  })
+
+  it('challengeById가 각 챌린지를 찾고, 미지 id는 undefined', () => {
+    for (const c of CHALLENGES) expect(challengeById(c.id)?.id).toBe(c.id)
+    expect(challengeById('no-such-challenge')).toBeUndefined()
+  })
+
+  it('보상은 양수, timed 챌린지만 timeLimitMs(양수)를 가진다', () => {
+    for (const c of CHALLENGES) {
+      expect(c.reward).toBeGreaterThan(0)
+      if (c.constraint === 'timed') {
+        expect(c.timeLimitMs).toBeGreaterThan(0)
+      } else {
+        expect(c.timeLimitMs).toBeUndefined()
+      }
+    }
   })
 })

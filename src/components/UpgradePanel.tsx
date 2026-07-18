@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useGameStore } from '../store/gameStore.ts'
 import { UPGRADES, type UpgradeDef } from '../data/upgrades.ts'
+import { challengeById } from '../data/challenges.ts'
 import { isUpgradeUnlocked } from '../engine/formulas.ts'
 import { formatNumber } from '../utils/format.ts'
 import { playDing } from '../engine/sound.ts'
@@ -22,6 +23,19 @@ export default function UpgradePanel() {
   const visibleIds = useGameStore(
     useShallow((s) => visibleUpgradeIds(s.generators, s.manaPerSecond, s.upgrades)),
   )
+  // 챌린지 '금욕의 공방'(no-upgrade) 진행 중이면 구매가 막힌다 — 안내를 띄우고 카드는 숨긴다(E-2.2).
+  const upgradeBlocked = useGameStore(
+    (s) => s.activeChallenge !== null && challengeById(s.activeChallenge.id)?.constraint === 'no-upgrade',
+  )
+
+  if (upgradeBlocked) {
+    return (
+      <div className="upgrade-panel">
+        <h2 className="upgrade-panel-title">{STRINGS.upgrade.panelTitle}</h2>
+        <p className="upgrade-blocked">{STRINGS.challenge.blockedUpgrade}</p>
+      </div>
+    )
+  }
 
   // 노출할 업그레이드가 없으면 섹션 자체를 숨긴다(빈 헤더 방지).
   if (visibleIds.length === 0) return null

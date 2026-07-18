@@ -153,8 +153,31 @@ export const STRINGS = {
     effectClickMps: (n: number) => `클릭 = MPS의 +${n}%p`,
     effectOfflineEfficiency: (pct: number) => `오프라인 효율 ${pct}%`,
     effectOfflineCap: (hours: number) => `오프라인 캡 ${hours}시간`,
+    // E-2.1 생산 트리(별의 축복) — 파생 생성 이름/설명은 티어명·배율을 파라미터로 받는다(i18n 대비).
+    blessingName: (genName: string) => `별의 축복: ${genName}`,
+    blessingDesc: (genName: string, mult: number) => `${genName} 생산 ×${mult}/Lv`,
+    effectGeneratorMult: (mult: string) => `해당 티어 생산 ×${mult}`,
+    // E-2.1 자동화(공방 관리인). 다음 레벨의 자동 구매 단계 요약.
+    effectAutomation: (level: number) => `오프라인 자동 구매 Lv.${level}`,
     maxed: '최대 레벨 달성',
     nextEffect: (label: string) => `다음: ${label}`,
+    // E-2.1 섹션 헤더.
+    sectionBasic: '기본',
+    sectionProduction: '생산 트리',
+    sectionAutomation: '자동화',
+  },
+
+  // E-2.2 챌린지 런. 활성 배지·각성 확인 모달의 선택 섹션·포기 확인. 챌린지 name/desc는 데이터(challenges.ts)에.
+  challenge: {
+    startSectionTitle: '챌린지와 함께 각성',
+    startSectionHint: '제약을 선택하면 각성 리셋과 함께 챌린지가 시작돼요(선택 안 하면 일반 각성).',
+    none: '선택 안 함',
+    completed: '✅ 완료',
+    activeBadge: (name: string) => `진행 중: ${name}`,
+    abandon: '챌린지 포기',
+    abandonConfirm: '정말 포기할까요? (보상 없이 해제)',
+    timedRemaining: (clock: string) => `남은 ${clock}`,
+    blockedUpgrade: '금욕의 공방 — 업그레이드 구매가 막혀 있어요',
   },
 
   achievements: {
@@ -204,6 +227,11 @@ export const STRINGS = {
     // E-1.2 포션 수확 — 제목은 포션명 파생, 부제는 효과(버프는 데이터 desc, 즉발은 지급량).
     potionTitle: (name: string) => `${name} 수확!`,
     potionInstantSub: (amount: string) => `${amount} 마나를 얻었어요`,
+    // E-2.2 챌린지 — 완료/실패 토스트.
+    challengeDoneTitle: (name: string) => `챌린지 완료: ${name}`,
+    challengeDoneSub: (percent: number) => `영구 생산 +${percent}%`,
+    challengeFailTitle: (name: string) => `챌린지 실패: ${name}`,
+    challengeFailSub: '제한 시간을 넘겼어요',
   },
 
   banner: {
