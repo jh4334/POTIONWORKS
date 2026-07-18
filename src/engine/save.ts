@@ -15,8 +15,9 @@ import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
 import { KNOWN_ACHIEVEMENT_IDS } from '../data/achievements.ts'
 import { STARDUST_UPGRADES, stardustUpgradeById } from '../data/stardustShop.ts'
+import { potionById } from '../data/potions.ts'
 import { STRINGS } from '../data/strings.ts'
-import type { BuyAmount } from '../store/gameStore.ts'
+import type { BuyAmount, Brewing } from '../store/gameStore.ts'
 
 // 세이브 스키마 버전. 필드 구조를 바꾸면 올리고 migrate에 단계 추가.
 // v2(T5.1): 각성 필드(lifetimeMana/stardust/totalPrestiges) 추가.
@@ -26,7 +27,9 @@ import type { BuyAmount } from '../store/gameStore.ts'
 // v6(D-5.3): M9 충돌 해소 메타(deviceId·saveCount) 추가 — 클라이언트 시계 대신 기기·단조 카운터로 판정.
 // v7(E-1.3): 통계 카운터 4종 추가 — meteorsClicked(골든 이벤트 클릭), prestigeCancels(각성 취소),
 //   mutedPlaytimeMs(음소거 플레이), dragonVisits(드래곤 방문). 신규 업적(숨김 포함) 조건의 진실.
-export const SAVE_VERSION = 7
+// v8(E-1.2): 포션 조제 상태 추가 — brewing(조제 중, 타임스탬프 진실 → 오프라인에도 진행), readyPotion(수확 대기),
+//   potionsBrewed(수확 누적 통계). 버프(activeBuffs)는 여전히 세이브 비포함(파생 소멸).
+export const SAVE_VERSION = 8
 
 // 직렬화 대상(진실만). 파생값은 제외.
 export interface SaveState {
@@ -59,6 +62,11 @@ export interface SaveState {
   prestigeCancels: number // 각성 확인 취소 누적(숨김 업적)
   mutedPlaytimeMs: number // 음소거 중 플레이 시간(ms, 숨김 업적)
   dragonVisits: number // 드래곤 방문 누적(숨김 업적)
+  // 포션 조제(v8, E-1.2). brewing=조제 중(진실은 readyAt 타임스탬프 → 오프라인에도 진행),
+  // readyPotion=완성돼 수확 대기 중인 포션 id, potionsBrewed=수확 누적(통계).
+  brewing: Brewing | null
+  readyPotion: string | null
+  potionsBrewed: number
 }
 
 // 이 기기의 영속 식별자(D-5.3). localStorage 별도 키에서 읽고, 없으면 UUID를 생성해 저장한다.
@@ -137,6 +145,10 @@ export function toSaveData(state: SaveState, now: number = Date.now()): SaveData
       prestigeCancels: state.prestigeCancels,
       mutedPlaytimeMs: state.mutedPlaytimeMs,
       dragonVisits: state.dragonVisits,
+      // 포션 조제(v8). brewing/readyPotion은 그대로 기록(진실), potionsBrewed는 누적 통계.
+      brewing: state.brewing === null ? null : { ...state.brewing },
+      readyPotion: state.readyPotion,
+      potionsBrewed: state.potionsBrewed,
     },
   }
 }
@@ -214,6 +226,20 @@ function normalizeStardustUpgrades(v: unknown): Record<string, number> {
   return out
 }
 
+// brewing 정규화: 알려진 포션 id + 유한 readyAt만. 그 외(미지 id·손상값)는 null(조제 안 함).
+function normalizeBrewing(v: unknown): Brewing | null {
+  if (!isRecord(v)) return null
+  const { potionId, readyAt } = v
+  if (typeof potionId !== 'string' || !potionById(potionId)) return null
+  if (typeof readyAt !== 'number' || !Number.isFinite(readyAt)) return null
+  return { potionId, readyAt }
+}
+
+// readyPotion 정규화: 알려진 포션 id 문자열만, 그 외는 null.
+function normalizeReadyPotion(v: unknown): string | null {
+  return typeof v === 'string' && potionById(v) ? v : null
+}
+
 // achievements 정규화: 알려진 업적 id 문자열만, 중복 제거.
 function normalizeAchievements(v: unknown): string[] {
   if (!Array.isArray(v)) return []
@@ -234,6 +260,7 @@ function normalizeAchievements(v: unknown): string[] {
 // v4→v5: stardustUpgrades가 없으므로 빈 객체({})로 초기화한다.
 // v5→v6: deviceId는 현재 기기값(getDeviceId), saveCount=0으로 초기화한다(단조 카운터 출발점).
 // v6→v7: 통계 카운터(meteorsClicked/prestigeCancels/mutedPlaytimeMs/dragonVisits)가 없으므로 0으로 초기화한다.
+// v7→v8: 포션 조제 상태(brewing/readyPotion/potionsBrewed)가 없으므로 null/null/0으로 초기화한다.
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
     console.warn(STRINGS.log.save.notObject)
@@ -304,6 +331,13 @@ export function migrate(raw: unknown): SaveData | null {
   const mutedPlaytimeMs = isV7Plus ? normalizeNonNeg(s.mutedPlaytimeMs, 0) : 0
   const dragonVisits = isV7Plus ? normalizeNonNegInt(s.dragonVisits, 0) : 0
 
+  // v7 이하엔 포션 조제 상태가 없다 → brewing=null, readyPotion=null, potionsBrewed=0.
+  // v8 이상은 검증해 채택(미지 포션 id·손상 readyAt은 null로 떨궈 안전하게 로드).
+  const isV8Plus = raw.version >= 8
+  const brewing = isV8Plus ? normalizeBrewing(s.brewing) : null
+  const readyPotion = isV8Plus ? normalizeReadyPotion(s.readyPotion) : null
+  const potionsBrewed = isV8Plus ? normalizeNonNegInt(s.potionsBrewed, 0) : 0
+
   return {
     version: SAVE_VERSION,
     savedAt: raw.savedAt,
@@ -329,6 +363,9 @@ export function migrate(raw: unknown): SaveData | null {
       prestigeCancels,
       mutedPlaytimeMs,
       dragonVisits,
+      brewing,
+      readyPotion,
+      potionsBrewed,
     },
   }
 }
@@ -352,10 +389,13 @@ function hasFiniteNumbers(state: SaveState): boolean {
     state.prestigeCancels,
     state.mutedPlaytimeMs,
     state.dragonVisits,
+    state.potionsBrewed,
   ]
   for (const n of scalars) {
     if (typeof n !== 'number' || !Number.isFinite(n)) return false
   }
+  // 조제 중이면 readyAt도 유한해야 한다(비유한 타임스탬프가 세이브를 오염시키는 것을 막는다).
+  if (state.brewing !== null && !Number.isFinite(state.brewing.readyAt)) return false
   for (const count of Object.values(state.generators)) {
     if (typeof count !== 'number' || !Number.isFinite(count)) return false
   }

@@ -76,6 +76,20 @@ export const STRINGS = {
     confirmOk: '각성',
   },
 
+  // E-1.2 포션 조제 패널(좌측, 각성 패널 위). 카드/버튼/진행 표시. 포션 name/desc는 데이터(potions.ts)에 둔다.
+  brewing: {
+    title: '포션 조제 🧪',
+    brewButton: '조제',
+    // 카드: 비용(현재 MPS 기준 실시간)·조제 시간.
+    cost: (v: string) => `${v} 💧`,
+    brewTime: (clock: string) => `조제 ${clock}`,
+    // 조제 중: "조제 중: {포션명}" + 진행 바(남은 시간).
+    brewingLabel: (name: string) => `조제 중: ${name}`,
+    remaining: (clock: string) => `남은 ${clock}`,
+    // 완성: 반짝이는 수확 버튼.
+    collectButton: (name: string) => `✨ ${name} 수확하기!`,
+  },
+
   offline: {
     title: '돌아온 걸 환영해요! 🧪',
     bodyLead: '자리 비운 동안',
@@ -125,6 +139,7 @@ export const STRINGS = {
     mps: '현재 초당 마나',
     clickPower: '클릭당 획득',
     playtime: '플레이 시간',
+    potionsBrewed: '조제한 포션', // E-1.2 통계(수확 누적). 업적은 이번 패스에서 추가하지 않는다(40개 유지).
     bonusTitle: '생산 보너스 내역',
     bonusAchievement: (count: number) => `업적 (${count}개)`,
     bonusStardust: (count: string) => `스타더스트 (${count}개)`,
@@ -186,6 +201,9 @@ export const STRINGS = {
     clickStormSub: (seconds: number, mult: number) => `${seconds}초간 클릭 ×${mult}`,
     dragonTitle: '늙은 드래곤의 축복!',
     dragonSub: (amount: string) => `${amount} 마나를 선물받았어요`,
+    // E-1.2 포션 수확 — 제목은 포션명 파생, 부제는 효과(버프는 데이터 desc, 즉발은 지급량).
+    potionTitle: (name: string) => `${name} 수확!`,
+    potionInstantSub: (amount: string) => `${amount} 마나를 얻었어요`,
   },
 
   banner: {

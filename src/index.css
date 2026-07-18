@@ -504,6 +504,162 @@ a,
   margin-bottom: 0;
 }
 
+/* E-1.2 포션 조제 패널 — 클릭 패널 하단, 각성 패널 위. */
+.brewing-panel {
+  width: 220px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+
+.brewing-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.potion-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.potion-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'icon name cost'
+    'icon desc time';
+  align-items: center;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.potion-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.potion-card-icon {
+  grid-area: icon;
+  font-size: 22px;
+}
+
+.potion-card-name {
+  grid-area: name;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.potion-card-desc {
+  grid-area: desc;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.potion-card-cost {
+  grid-area: cost;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: right;
+}
+
+.potion-card-time {
+  grid-area: time;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+/* 구매 가능 하이라이트 — 기존 can-afford 패턴과 동일 감각. */
+.potion-card.can-afford {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(169, 112, 255, 0.45);
+}
+
+.potion-card.can-afford:hover {
+  filter: brightness(1.08);
+}
+
+/* 조제 중 — 진행 바 + "조제 중: {포션명}". */
+.brewing-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.brewing-progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.brewing-progress-remaining {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.brewing-progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.brewing-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7ad0ff, #a970ff);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* 완성 — 반짝이는 수확 버튼(can-afford pulse 재사용). */
+.potion-collect {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f4ecff;
+  background: linear-gradient(135deg, #a970ff, #7ad0ff);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: filter 0.1s ease, transform 0.05s ease;
+}
+
+.potion-collect.can-afford {
+  animation: afford-pulse 1.4s ease-in-out infinite;
+}
+
+.potion-collect:hover {
+  filter: brightness(1.08);
+}
+
+.potion-collect:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .potion-collect.can-afford {
+    animation: none;
+  }
+}
+
 /* D-3.1 스타더스트 상점 카드 그리드. */
 .stardust-cards {
   display: grid;

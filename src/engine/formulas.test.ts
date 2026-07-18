@@ -22,8 +22,14 @@ import {
   nextStardustAt,
   prestigeGain,
   composeGlobalMult,
+  potionCost,
+  isPotionUnlocked,
+  isBrewReady,
+  remainingBrewMs,
+  productionBuffBonus,
   type AchievementStats,
 } from './formulas.ts'
+import { POTIONS, type PotionDef } from '../data/potions.ts'
 import { COST_GROWTH, GENERATORS, type GeneratorDef, type GeneratorId } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
 import type { AchievementDef } from '../data/achievements.ts'
@@ -708,5 +714,113 @@ describe('비용 곡선 property fuzz (D-5.5)', () => {
         expect(Math.abs(split - whole)).toBeLessThanOrEqual(tolerance)
       }
     }
+  })
+})
+
+// --- E-1.2 포션 조제 ---
+const POTION = (id: string): PotionDef => POTIONS.find((p) => p.id === id)!
+
+describe('potionCost (E-1.2)', () => {
+  it('비용 = 현재 MPS × costMpsSeconds (하한 위에서)', () => {
+    const def = POTION('vitality') // costMpsSeconds 120, floor 1000
+    // MPS 100 → 100×120 = 12,000 (하한 1000보다 큼)
+    expect(potionCost(def, 100)).toBe(12_000)
+  })
+
+  it('MPS가 낮아 비용이 하한 미만이면 하한을 쓴다', () => {
+    const def = POTION('vitality') // floor 1000
+    expect(potionCost(def, 0)).toBe(1_000) // MPS 0 → 하한
+    expect(potionCost(def, 1)).toBe(1_000) // 1×120=120 < 1000 → 하한
+    expect(potionCost(def, 10)).toBe(1_200) // 10×120=1200 > 1000 → 그대로
+  })
+
+  it('비유한/음수 MPS는 MPS분 0으로 보고 하한만 적용', () => {
+    const def = POTION('sageTouch') // floor 100_000
+    expect(potionCost(def, NaN)).toBe(100_000)
+    expect(potionCost(def, Infinity)).toBe(100_000)
+    expect(potionCost(def, -50)).toBe(100_000)
+  })
+
+  it('MPS분은 올림(ceil) 정수', () => {
+    const def = POTION('vitality') // 120초, floor 1000
+    // MPS 8.34 → 8.34×120 = 1000.8 → ceil 1001
+    expect(potionCost(def, 8.34)).toBe(1_001)
+  })
+})
+
+describe('isPotionUnlocked (E-1.2)', () => {
+  it('전생 포함 총 누적 마나가 임계 이상이면 해금', () => {
+    const def = POTION('vitality') // 100K
+    expect(isPotionUnlocked(def, 99_999)).toBe(false)
+    expect(isPotionUnlocked(def, 100_000)).toBe(true)
+    expect(isPotionUnlocked(def, 5_000_000)).toBe(true)
+  })
+
+  it('세 포션의 임계가 오름차순(100K < 10M < 1B)', () => {
+    const vit = POTION('vitality')
+    const sage = POTION('sageTouch')
+    const warp = POTION('timeWarp')
+    expect(vit.unlockTotalMana).toBeLessThan(sage.unlockTotalMana)
+    expect(sage.unlockTotalMana).toBeLessThan(warp.unlockTotalMana)
+  })
+})
+
+describe('isBrewReady / remainingBrewMs (E-1.2)', () => {
+  it('brewing이 null이면 완성 아님·남은 시간 0', () => {
+    expect(isBrewReady(null, 1000)).toBe(false)
+    expect(remainingBrewMs(null, 1000)).toBe(0)
+  })
+
+  it('now >= readyAt이면 완성', () => {
+    expect(isBrewReady({ readyAt: 1000 }, 999)).toBe(false)
+    expect(isBrewReady({ readyAt: 1000 }, 1000)).toBe(true)
+    expect(isBrewReady({ readyAt: 1000 }, 1500)).toBe(true)
+  })
+
+  it('남은 시간 = max(0, readyAt − now)', () => {
+    expect(remainingBrewMs({ readyAt: 5000 }, 2000)).toBe(3000)
+    expect(remainingBrewMs({ readyAt: 5000 }, 5000)).toBe(0)
+    expect(remainingBrewMs({ readyAt: 5000 }, 9000)).toBe(0) // 음수 안 됨
+  })
+})
+
+describe('productionBuffBonus (E-1.2 다중 생산 버프 정산)', () => {
+  it('버프 없으면 0', () => {
+    expect(productionBuffBonus(100, 0, 10_000, [])).toBe(0)
+  })
+
+  it('단일 버프: baseMps × (mult−1) × 겹친초 (구간 전체 겹침)', () => {
+    // baseMps 10, ×7 버프가 [0, 30s] 전체를 덮는 [0, 30s] 구간 → 10×6×30 = 1800
+    const bonus = productionBuffBonus(10, 0, 30_000, [{ startsAt: 0, endsAt: 30_000, mult: 7 }])
+    expect(bonus).toBeCloseTo(10 * 6 * 30, 6)
+  })
+
+  it('단일 버프: 창이 구간 일부만 덮으면 겹친 만큼만', () => {
+    // 버프 [0,10s], 구간 [0,30s] → 겹침 10s → 10×6×10 = 600
+    const bonus = productionBuffBonus(10, 0, 30_000, [{ startsAt: 0, endsAt: 10_000, mult: 7 }])
+    expect(bonus).toBeCloseTo(10 * 6 * 10, 6)
+  })
+
+  it('두 생산 버프 공존: 겹치는 구간은 곱(×14)으로 정산 — 교차항 포함', () => {
+    // baseMps 10. 골든 ×7 [0,30s], 포션 ×2 [0,60s], 구간 [0,60s].
+    // [0,30s] 둘 다 활성 → M=14, bonus += 10×13×30 = 3900
+    // [30s,60s] 포션만 → M=2, bonus += 10×1×30 = 300
+    // 합 4200
+    const bonus = productionBuffBonus(10, 0, 60_000, [
+      { startsAt: 0, endsAt: 30_000, mult: 7 },
+      { startsAt: 0, endsAt: 60_000, mult: 2 },
+    ])
+    expect(bonus).toBeCloseTo(4200, 6)
+  })
+
+  it('창이 구간 시작 이전부터라도 겹친 부분만 정산', () => {
+    // 버프 [−10s, 10s], 구간 [0, 30s] → 겹침 [0,10s] 10s → 10×1×10 = 100 (×2)
+    const bonus = productionBuffBonus(10, 0, 30_000, [{ startsAt: -10_000, endsAt: 10_000, mult: 2 }])
+    expect(bonus).toBeCloseTo(10 * 1 * 10, 6)
+  })
+
+  it('baseMps 0·역구간이면 0', () => {
+    expect(productionBuffBonus(0, 0, 30_000, [{ startsAt: 0, endsAt: 30_000, mult: 7 }])).toBe(0)
+    expect(productionBuffBonus(10, 30_000, 0, [{ startsAt: 0, endsAt: 30_000, mult: 7 }])).toBe(0)
   })
 })

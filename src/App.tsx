@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import Header from './components/Header.tsx'
 import ClickerPanel from './components/ClickerPanel.tsx'
+import BrewingPanel from './components/BrewingPanel.tsx'
 import PrestigeModal from './components/PrestigeModal.tsx'
 import UpgradePanel from './components/UpgradePanel.tsx'
 import GeneratorList from './components/GeneratorList.tsx'
@@ -74,6 +75,7 @@ export default function App() {
       <main className="layout">
         <section className="layout-left">
           <ClickerPanel />
+          <BrewingPanel />
           <PrestigeModal />
         </section>
         <section className="layout-right">

@@ -18,6 +18,7 @@ import { UPGRADES, resolveUpgrades } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
 import { stardustUpgradeById } from '../data/stardustShop.ts'
 import { goldenEventByKind, type GoldenEventKind } from '../data/events.ts'
+import { potionById } from '../data/potions.ts'
 import { STRINGS } from '../data/strings.ts'
 import { formatNumber } from '../utils/format.ts'
 import {
@@ -33,6 +34,10 @@ import {
   effectiveOfflineCapMs,
   prestigeGain,
   composeGlobalMult,
+  potionCost,
+  isPotionUnlocked,
+  isBrewReady,
+  productionBuffBonus,
 } from '../engine/formulas.ts'
 import { clearSave, getDeviceId, type SaveData } from '../engine/save.ts'
 
@@ -61,12 +66,23 @@ export interface AchievementToast {
 
 // 활성 버프(D-4.6 유성 · E-1.4 확장). 생산/클릭 배율에 영향을 주는 런타임 상태 — UI 상태가 아니다.
 // 세이브 비포함: 로드 시 소멸(단순 유지). 만료 판정은 tick에서(now >= endsAt), 타이머 신뢰 금지 원칙.
-// kind로 적용 경로가 갈린다: 'production'은 MPS(globalMult)에, 'click'은 클릭 파워 최종값에 곱해진다.
-// 종류가 다르면 공존(production+click 동시), 같은 종류를 다시 받으면 시간만 갱신한다(E-1.4).
+// kind로 적용 경로가 갈린다: 'production'/'potion-production'은 MPS(globalMult)에, 'click'/'potion-click'은
+// 클릭 파워 최종값에 곱해진다(E-1.2). 골든 이벤트 버프와 포션 버프는 kind가 달라 공존한다 —
+// 예: 골든 'production'(×7)과 포션 'potion-production'(×2)이 동시에 걸리면 생산 ×14(중첩 허용이 재미).
+// 같은 kind를 다시 받으면 시간만 갱신한다(addBuff). startsAt/endsAt로 창을 표현해 tick catch-up이
+// 여러 생산 버프의 겹침을 정확히 정산한다(productionBuffBonus).
 export interface Buff {
-  kind: 'production' | 'click'
+  kind: 'production' | 'click' | 'potion-production' | 'potion-click'
   mult: number
+  startsAt: number // epoch ms — 버프 발동 시각(창 시작). tick catch-up 겹침 계산에 쓴다.
   endsAt: number // epoch ms — 이 시각 이후 첫 tick에서 해제된다.
+}
+
+// 포션 조제 상태(E-1.2). 진실은 readyAt 타임스탬프 — 오프라인 중에도 자동으로 진행된다(비교만 하면 됨).
+// 세이브 포함(v8). 완성 판정(now >= readyAt)은 tick에서, 수확은 능동 행위(collectPotion)로만.
+export interface Brewing {
+  potionId: string
+  readyAt: number // epoch ms — 이 시각 이후 첫 tick에서 완성(readyPotion으로 이동).
 }
 
 export interface GameState {
@@ -139,6 +155,12 @@ export interface GameState {
   clickCombo: number
   // 마지막 클릭 시각(epoch ms, 세이브 비포함). clickCombo 연속 판정 기준.
   lastClickAt: number
+  // 포션 조제(E-1.2, 세이브 v8). brewing=조제 중(진실은 readyAt 타임스탬프 → 오프라인에도 진행),
+  // readyPotion=완성돼 수확 대기 중인 포션 id(tick이 now>=readyAt에서 brewing→readyPotion 이동),
+  // potionsBrewed=수확 누적(통계). 버프 적용은 collectPotion이 activeBuffs/즉시 지급으로 처리한다.
+  brewing: Brewing | null
+  readyPotion: string | null
+  potionsBrewed: number
   // 솥 클릭: 마나를 clickPower만큼 증가(누적 마나도 함께).
   click: () => void
   // 시설 구매: 비용 확인 후 마나 차감 + 보유 증가 + 파생값 재계산.
@@ -175,6 +197,12 @@ export interface GameState {
   prestige: () => void
   // 각성 확인 모달 취소(E-1.3): prestigeCancels += 1. 숨겨진 업적 '미련의 대가'(3회) 판정을 위해 액션으로 센다.
   cancelPrestige: () => void
+  // 포션 조제 시작(E-1.2): 비용(현재 MPS × costMpsSeconds, 하한 적용) 차감 + brewing 세팅.
+  //   조제 중이거나 수확 대기 중이면 불가(단일 조제 슬롯), 미해금·마나 부족 시 불가(방어 검증).
+  startBrew: (potionId: string) => void
+  // 포션 수확(E-1.2): readyPotion 소비 → 효과 적용(버프형은 activeBuffs push, 즉발형은 즉시 지급).
+  //   potionsBrewed += 1(통계). 토스트·파티클 버스트로 연출. 없으면(readyPotion null) 무시.
+  collectPotion: () => void
   // 골든 이벤트 발동(D-4.6 · E-1.4): kind별로 생산 버프 / 클릭 버프 / 드래곤 즉시 지급.
   //   버프는 종류가 다르면 공존, 같으면 시간 갱신. 드래곤은 버프 없이 현재 MPS×N초를 즉시 지급한다.
   //   meteorsClicked += 1(모든 종류). now는 Date.now(). 버프 만료는 tick이 판정한다(타이머 신뢰 금지).
@@ -245,6 +273,9 @@ function createInitialState() {
     dragonVisits: 0,
     clickCombo: 0,
     lastClickAt: 0,
+    brewing: null as Brewing | null,
+    readyPotion: null as string | null,
+    potionsBrewed: 0,
   }
 }
 
@@ -291,14 +322,23 @@ function recalcDerived(ctx: RecalcContext): {
   return { manaPerSecond, clickPower, globalMult }
 }
 
-// 활성 버프 목록에서 종류별 배율 곱(없으면 1). recalcDerived의 buffMult/clickBuffMult 인자로 넘긴다(E-1.4).
+// 버프 kind 분류(E-1.2): 생산 계열(골든 'production' + 포션 'potion-production')은 MPS에,
+// 클릭 계열(골든 'click' + 포션 'potion-click')은 클릭 파워에 곱해진다. 계열이 다르면 공존한다.
+function isProductionKind(kind: Buff['kind']): boolean {
+  return kind === 'production' || kind === 'potion-production'
+}
+function isClickKind(kind: Buff['kind']): boolean {
+  return kind === 'click' || kind === 'potion-click'
+}
+
+// 활성 버프 목록에서 계열별 배율 곱(없으면 1). recalcDerived의 buffMult/clickBuffMult 인자로 넘긴다(E-1.4·E-1.2).
 // 만료는 tick이 activeBuffs에서 지워 처리하므로 여기선 시각 비교를 하지 않는다(목록에 있음=적용).
-// 같은 종류는 하나만 유지(addBuff가 갱신)하지만, 방어적으로 곱으로 합성한다.
+// 골든·포션 버프가 공존하면 곱으로 합성한다(생산 ×7 × ×2 = ×14 등 — 중첩 허용이 재미).
 function productionBuffMult(buffs: Buff[]): number {
-  return buffs.reduce((m, b) => (b.kind === 'production' ? m * b.mult : m), 1)
+  return buffs.reduce((m, b) => (isProductionKind(b.kind) ? m * b.mult : m), 1)
 }
 function clickBuffMult(buffs: Buff[]): number {
-  return buffs.reduce((m, b) => (b.kind === 'click' ? m * b.mult : m), 1)
+  return buffs.reduce((m, b) => (isClickKind(b.kind) ? m * b.mult : m), 1)
 }
 
 // 버프 추가/갱신: 같은 종류는 대체(시간 갱신), 다른 종류는 공존(E-1.4). 새 배열을 돌려준다(불변).
@@ -478,8 +518,10 @@ export const useGameStore = create<GameState>()((set) => ({
       // 생산 버프 보너스는 "이 tick 구간이 버프 창[start,end]과 실제로 겹친 시간"만큼만 100%로 더한다.
       // 이렇게 하면 탭을 백그라운드에 두고 복귀해도(큰 elapsed) 버프가 30초 규칙을 넘겨 과지급되지 않는다.
       const mps = s.manaPerSecond
-      const prodBuff = s.activeBuffs.find((b) => b.kind === 'production') ?? null
-      const prodMult = prodBuff ? prodBuff.mult : 1
+      // 생산 계열 버프(골든 'production' + 포션 'potion-production')를 모두 뺀 순수 생산율.
+      // 여러 생산 버프가 공존하면 배율은 곱으로 쌓이므로 곱으로 나눠 baseMps를 얻는다(단일이면 기존과 동일).
+      const prodBuffs = s.activeBuffs.filter((b) => isProductionKind(b.kind))
+      const prodMult = prodBuffs.reduce((m, b) => m * b.mult, 1)
       const baseMps = mps / prodMult
       const baseGained =
         elapsedMs <= MAX_TICK_CATCHUP_MS
@@ -491,16 +533,9 @@ export const useGameStore = create<GameState>()((set) => ({
               effectiveOfflineEfficiency(s.stardustUpgrades),
               effectiveOfflineCapMs(s.stardustUpgrades),
             )
-      // 생산 버프 창과 [lastTick, now] 구간의 겹침(ms). 버프 없으면 0. (창 길이는 생산 버프 지속시간 상수.)
-      const buffedMs = prodBuff
-        ? Math.max(
-            0,
-            Math.min(prodBuff.endsAt, now) -
-              Math.max(prodBuff.endsAt - METEOR_BUFF_DURATION_MS, s.lastTick),
-          )
-        : 0
-      // 겹친 시간만큼 (배율-1)배를 base 생산에 얹는다(버프 창은 짧아 캡 무관, 100%).
-      const gained = baseGained + baseMps * (prodMult - 1) * (buffedMs / 1000)
+      // 생산 버프 보너스: 각 버프 창이 [lastTick, now]와 겹친 구간만큼 (배율 곱 −1)배를 base에 얹는다(100%).
+      // 창이 짧아(≤ 지속시간) 큰 elapsed(백그라운드 복귀)에도 30초/10분 규칙을 넘겨 과지급되지 않는다(순수 함수).
+      const gained = baseGained + productionBuffBonus(baseMps, s.lastTick, now, prodBuffs)
       let partial: Partial<GameState> = {
         mana: s.mana + gained,
         lifetimeMana: s.lifetimeMana + gained, // 생산 획득도 누적 마나에 반영
@@ -510,6 +545,11 @@ export const useGameStore = create<GameState>()((set) => ({
         playtimeMs: s.playtimeMs + elapsedMs,
         // 음소거 중 플레이 시간(숨겨진 업적 '고요한 공방'). 음소거 상태의 경과만 별도 누적한다.
         mutedPlaytimeMs: s.mutedPlaytimeMs + (s.muted ? elapsedMs : 0),
+      }
+      // 조제 완료 판정(E-1.2): now >= readyAt이면 brewing → readyPotion로 이동. 진실은 타임스탬프라
+      // 오프라인 중에도 진행되고 복귀 첫 tick이 판정한다. 수확은 능동 행위(collectPotion)라 여기선 자동 지급하지 않는다.
+      if (s.brewing !== null && isBrewReady(s.brewing, now)) {
+        partial = { ...partial, brewing: null, readyPotion: s.brewing.potionId }
       }
       // 버프 만료 판정은 tick에서(now >= endsAt) — 타이머 신뢰 금지 원칙. 백그라운드 복귀 후에도 첫 tick이
       // 정확히 판정한다. 만료된 버프를 목록에서 지우고 남은 버프 배율로 재계산해 생산·클릭이 원복된다.
@@ -568,6 +608,11 @@ export const useGameStore = create<GameState>()((set) => ({
         prestigeCancels: st.prestigeCancels,
         mutedPlaytimeMs: st.mutedPlaytimeMs,
         dragonVisits: st.dragonVisits,
+        // 포션 조제(v8): brewing/readyPotion은 세이브 값 그대로(readyAt는 절대 타임스탬프라 오프라인 경과가
+        //   자동 반영 — 로드 후 첫 tick이 완성 판정). potionsBrewed는 누적 통계.
+        brewing: st.brewing,
+        readyPotion: st.readyPotion,
+        potionsBrewed: st.potionsBrewed,
         // saveCount는 단조 카운터라 세이브 값에서 이어간다(로드 후 저장이 이어서 +1). deviceId는 이 기기 값 유지.
         saveCount: st.saveCount,
         // 로드 시 토스트는 띄우지 않는다(이미 달성한 것). 스로틀 시각도 초기화.
@@ -668,6 +713,88 @@ export const useGameStore = create<GameState>()((set) => ({
   // withAchievements로 감싸 취소 3회째에 즉시 업적을 잡는다(다른 값은 건드리지 않음).
   cancelPrestige: () => set((s) => withAchievements(s, { prestigeCancels: s.prestigeCancels + 1 })),
 
+  // 포션 조제 시작(E-1.2). 단일 조제 슬롯 — 조제 중이거나 수확 대기 중이면 시작 불가(완성분을 덮어써 잃지 않게).
+  // 비용 = potionCost(현재 MPS × costMpsSeconds, 하한). 해금·마나 부족 시 무시(UI에서도 막지만 방어).
+  // readyAt = now + brewMs(절대 타임스탬프 진실 → 오프라인 중에도 진행). 마나 차감은 소비라 통계/각성 기준 불변.
+  startBrew: (potionId) =>
+    set((s) => {
+      if (s.brewing !== null || s.readyPotion !== null) return s
+      const def = potionById(potionId)
+      if (!def) return s
+      if (!isPotionUnlocked(def, s.totalLifetimeMana)) return s
+      const cost = potionCost(def, s.manaPerSecond)
+      if (s.mana < cost) return s
+      const now = Date.now()
+      return { mana: s.mana - cost, brewing: { potionId, readyAt: now + def.brewMs } }
+    }),
+
+  // 포션 수확(E-1.2). readyPotion 소비 → 효과 적용. potionsBrewed += 1(통계). 토스트·파티클 버스트로 연출.
+  //  - buff-production/buff-click: activeBuffs에 'potion-production'/'potion-click'로 push(골든 버프와 공존) → 재계산.
+  //  - instant-mps: 현재 MPS × seconds를 즉시 지급(늙은 드래곤 계열, 버프 아님).
+  // 즉시 지급/누적 갱신이 업적을 달성시킬 수 있어 withAchievements로 감싼다.
+  collectPotion: () =>
+    set((s) => {
+      if (s.readyPotion === null) return s
+      const def = potionById(s.readyPotion)
+      if (!def) return { readyPotion: null } // 미지 포션 id(데이터 변경 등)면 조용히 소비(방어).
+      const now = Date.now()
+      const potionsBrewed = s.potionsBrewed + 1
+      const e = def.effect
+
+      if (e.kind === 'instant-mps') {
+        const grant = s.manaPerSecond * e.seconds
+        return withAchievements(s, {
+          readyPotion: null,
+          potionsBrewed,
+          mana: s.mana + grant,
+          lifetimeMana: s.lifetimeMana + grant,
+          totalLifetimeMana: s.totalLifetimeMana + grant,
+          burstKey: s.burstKey + 1,
+          toasts: [
+            ...s.toasts,
+            {
+              id: nextToastId++,
+              name: '',
+              icon: def.icon,
+              title: STRINGS.toast.potionTitle(def.name),
+              sub: STRINGS.toast.potionInstantSub(formatNumber(grant)),
+            },
+          ],
+        })
+      }
+
+      // 버프형: 같은 계열의 골든 버프와 공존(kind가 다름). 같은 potion 계열을 다시 받으면 시간 갱신(addBuff).
+      const kind: Buff['kind'] = e.kind === 'buff-production' ? 'potion-production' : 'potion-click'
+      const buff: Buff = { kind, mult: e.mult, startsAt: now, endsAt: now + e.durationMs }
+      const activeBuffs = addBuff(s.activeBuffs, buff)
+      return withAchievements(s, {
+        readyPotion: null,
+        potionsBrewed,
+        activeBuffs,
+        burstKey: s.burstKey + 1,
+        toasts: [
+          ...s.toasts,
+          {
+            id: nextToastId++,
+            name: '',
+            icon: def.icon,
+            title: STRINGS.toast.potionTitle(def.name),
+            sub: def.desc,
+          },
+        ],
+        ...recalcDerived({
+          generators: s.generators,
+          upgradeIds: s.upgrades,
+          basePower: s.basePower,
+          stardust: s.stardust,
+          achievementCount: s.achievements.length,
+          stardustUpgrades: s.stardustUpgrades,
+          buffMult: productionBuffMult(activeBuffs),
+          clickBuffMult: clickBuffMult(activeBuffs),
+        }),
+      })
+    }),
+
   // 골든 이벤트 발동(D-4.6 · E-1.4): kind별로 분기한다. 토스트는 기존 큐 재사용(icon/title/sub 지정).
   //  - production: 생산 버프(MPS ×) 추가/갱신 → globalMult 재계산.
   //  - click: 클릭 버프(클릭 파워 ×) 추가/갱신 → clickPower 재계산. 생산 버프와 공존한다.
@@ -704,8 +831,8 @@ export const useGameStore = create<GameState>()((set) => ({
       // 버프형(생산/클릭): 종류별 배율·지속시간으로 추가/갱신. 같은 종류면 시간 갱신, 다른 종류면 공존.
       const isProduction = kind === 'production'
       const buff: Buff = isProduction
-        ? { kind: 'production', mult: METEOR_BUFF_MULT, endsAt: now + METEOR_BUFF_DURATION_MS }
-        : { kind: 'click', mult: CLICK_BUFF_MULT, endsAt: now + CLICK_BUFF_DURATION_MS }
+        ? { kind: 'production', mult: METEOR_BUFF_MULT, startsAt: now, endsAt: now + METEOR_BUFF_DURATION_MS }
+        : { kind: 'click', mult: CLICK_BUFF_MULT, startsAt: now, endsAt: now + CLICK_BUFF_DURATION_MS }
       const activeBuffs = addBuff(s.activeBuffs, buff)
       return withAchievements(s, {
         activeBuffs,

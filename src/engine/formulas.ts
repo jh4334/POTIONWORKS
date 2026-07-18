@@ -2,6 +2,7 @@
 // 비용 곡선 버그는 세이브를 오염시키므로 formulas.test.ts로 경계값을 고정한다.
 import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
+import type { PotionDef } from '../data/potions.ts'
 import type { AchievementDef } from '../data/achievements.ts'
 import {
   ACHIEVEMENT_MULT_PER,
@@ -399,6 +400,68 @@ export function effectiveOfflineCapMs(
     }
   }
   return cap
+}
+
+// --- 포션 조제 (E-1.2) ---
+// 조제 비용 = max(현재 MPS × costMpsSeconds, costFloor). ceil로 정수화.
+// MPS가 0/음수/비유한이면 MPS분은 0으로 보고 하한만 든다(각성 직후 등 MPS≈0에서도 유의미하게).
+export function potionCost(def: PotionDef, mps: number): number {
+  const perMps = Number.isFinite(mps) && mps > 0 ? mps * def.costMpsSeconds : 0
+  return Math.max(Math.ceil(perMps), def.costFloor)
+}
+
+// 해금 판정(순수): 전생 포함 총 누적 마나가 해금 임계 이상. 각성해도 유지되는 값이라 한 번 해금되면 유지된다.
+export function isPotionUnlocked(def: PotionDef, totalLifetimeMana: number): boolean {
+  return totalLifetimeMana >= def.unlockTotalMana
+}
+
+// 조제 완료 판정(순수). readyAt 시각을 지났으면 완성. 진실은 타임스탬프 — 오프라인 경과도 이 비교로 처리된다.
+export function isBrewReady(brewing: { readyAt: number } | null, now: number): boolean {
+  return brewing !== null && now >= brewing.readyAt
+}
+
+// 조제 남은 시간(ms, 표시용 순수 함수). 완성됐거나 조제 중 아니면 0.
+export function remainingBrewMs(brewing: { readyAt: number } | null, now: number): number {
+  if (brewing === null) return 0
+  return Math.max(0, brewing.readyAt - now)
+}
+
+// 생산 버프 창(active/potion 공통). startsAt~endsAt 사이 mult가 곱해진다.
+export interface ProductionBuffWindow {
+  startsAt: number
+  endsAt: number
+  mult: number
+}
+
+// 생산 버프들이 [start, end] 구간에 더해 주는 추가 마나(순수, tick catch-up용).
+// 여러 생산 버프(골든 'production' + 포션 'potion-production')가 공존할 때 배율은 곱으로 쌓인다 —
+// 버프 창 경계마다 구간을 쪼개 각 구간의 배율 곱 M을 구하고, baseMps × (M−1) × 구간초를 100%로 더한다.
+// (baseMps = 생산 버프를 모두 뺀 순수 생산율. 단일 버프면 기존 baseMps×(mult−1)×겹침초와 동일하다.)
+// 버프 창은 짧아(≤ 지속시간) 겹침만큼만 더하므로, 큰 elapsed(백그라운드 복귀)에도 과지급되지 않는다.
+export function productionBuffBonus(
+  baseMps: number,
+  start: number,
+  end: number,
+  buffs: ProductionBuffWindow[],
+): number {
+  if (!(end > start) || !(baseMps > 0) || buffs.length === 0) return 0
+  // 구간 경계점: [start, end] + 각 버프의 창 경계(구간 내부에 드는 것만).
+  const points = new Set<number>([start, end])
+  for (const b of buffs) {
+    if (b.startsAt > start && b.startsAt < end) points.add(b.startsAt)
+    if (b.endsAt > start && b.endsAt < end) points.add(b.endsAt)
+  }
+  const sorted = [...points].sort((a, b) => a - b)
+  let bonus = 0
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    const segStart = sorted[i]
+    const segEnd = sorted[i + 1]
+    const mid = (segStart + segEnd) / 2
+    let m = 1
+    for (const b of buffs) if (b.startsAt <= mid && mid < b.endsAt) m *= b.mult
+    if (m > 1) bonus += baseMps * (m - 1) * ((segEnd - segStart) / 1000)
+  }
+  return bonus
 }
 
 // 해금 조건 판정(순수). 시설 보유수 또는 총 MPS 기준.

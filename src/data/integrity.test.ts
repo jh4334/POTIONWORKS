@@ -4,6 +4,7 @@ import { UPGRADES } from './upgrades.ts'
 import { ACHIEVEMENTS } from './achievements.ts'
 import { STARDUST_UPGRADES } from './stardustShop.ts'
 import { GOLDEN_EVENTS, pickGoldenEvent, goldenEventByKind } from './events.ts'
+import { POTIONS, potionById } from './potions.ts'
 
 // 데이터 참조 무결성(D-5.1). GeneratorId 타입화가 컴파일 단계에서 오타를 막지만,
 // 런타임 데이터(파생 생성·수동 정의)가 실제 GENERATORS와 일치하는지·id 중복이 없는지 테스트로 고정한다.
@@ -93,6 +94,44 @@ describe('골든 이벤트 데이터 무결성(E-1.4)', () => {
     expect(pickGoldenEvent(NaN).kind).toBe(GOLDEN_EVENTS[0].kind)
     expect(pickGoldenEvent(2).kind).toBe(GOLDEN_EVENTS[GOLDEN_EVENTS.length - 1].kind)
     expect(pickGoldenEvent(-1).kind).toBe(GOLDEN_EVENTS[0].kind)
+  })
+})
+
+describe('포션 데이터 무결성(E-1.2)', () => {
+  it('포션 id에 중복이 없다', () => {
+    expect(duplicates(POTIONS.map((p) => p.id))).toEqual([])
+  })
+
+  it('potionById가 각 포션을 찾고, 미지 id는 undefined', () => {
+    for (const p of POTIONS) expect(potionById(p.id)?.id).toBe(p.id)
+    expect(potionById('no-such-potion')).toBeUndefined()
+  })
+
+  it('비용·하한·조제 시간·해금 임계는 모두 양수', () => {
+    for (const p of POTIONS) {
+      expect(p.costMpsSeconds).toBeGreaterThan(0)
+      expect(p.costFloor).toBeGreaterThan(0)
+      expect(p.brewMs).toBeGreaterThan(0)
+      expect(p.unlockTotalMana).toBeGreaterThan(0)
+    }
+  })
+
+  it('해금 임계는 오름차순(온보딩 — 낮은 순 노출)', () => {
+    for (let i = 1; i < POTIONS.length; i += 1) {
+      expect(POTIONS[i].unlockTotalMana).toBeGreaterThan(POTIONS[i - 1].unlockTotalMana)
+    }
+  })
+
+  it('효과 파라미터가 유효(버프는 배율>1·지속>0, 즉발은 초>0)', () => {
+    for (const p of POTIONS) {
+      const e = p.effect
+      if (e.kind === 'instant-mps') {
+        expect(e.seconds).toBeGreaterThan(0)
+      } else {
+        expect(e.mult).toBeGreaterThan(1)
+        expect(e.durationMs).toBeGreaterThan(0)
+      }
+    }
   })
 })
 

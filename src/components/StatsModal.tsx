@@ -47,6 +47,7 @@ export default function StatsModal({ onClose }: Props) {
       clickPower: st.clickPower,
       achievementCount: st.achievements.length,
       playtimeMs: st.playtimeMs,
+      potionsBrewed: st.potionsBrewed,
     })),
   )
 
@@ -64,6 +65,7 @@ export default function StatsModal({ onClose }: Props) {
         <Row label={STRINGS.stats.mps} value={formatNumber(s.mps)} />
         <Row label={STRINGS.stats.clickPower} value={`+${formatNumber(s.clickPower)}`} />
         <Row label={STRINGS.stats.playtime} value={formatPlaytime(s.playtimeMs)} />
+        <Row label={STRINGS.stats.potionsBrewed} value={formatNumber(s.potionsBrewed)} />
       </div>
 
       <p className="stats-bonus-title">{STRINGS.stats.bonusTitle}</p>

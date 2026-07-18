@@ -15,6 +15,7 @@ import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
 import { STARDUST_UPGRADES } from '../data/stardustShop.ts'
+import { POTIONS } from '../data/potions.ts'
 import { useGameStore } from '../store/gameStore.ts'
 import {
   SAVE_KEY,
@@ -27,6 +28,7 @@ const KNOWN_GEN = GENERATORS[0].id // 'apprentice'
 const KNOWN_UP = UPGRADES[0].id // 'apprentice-x2-10'
 const KNOWN_ACH = ACHIEVEMENTS[0].id // 'clicks-100'
 const KNOWN_STARDUST = STARDUST_UPGRADES[0].id // 'starting-apprentices'
+const KNOWN_POTION = POTIONS[0].id // 'vitality'
 
 // 클린 픽스처(알려진 id만, 중복 없음) — 라운드트립이 정확히 일치하도록.
 function makeState(): SaveState {
@@ -55,6 +57,9 @@ function makeState(): SaveState {
     prestigeCancels: 2,
     mutedPlaytimeMs: 654_321,
     dragonVisits: 4,
+    brewing: { potionId: KNOWN_POTION, readyAt: 1_800_000 },
+    readyPotion: null,
+    potionsBrewed: 6,
   }
 }
 
@@ -397,6 +402,68 @@ describe('migrate', () => {
     expect(bad!.state.prestigeCancels).toBe(0)
     expect(bad!.state.mutedPlaytimeMs).toBe(0)
     expect(bad!.state.dragonVisits).toBe(0)
+  })
+
+  it('v7→v8: 포션 조제 상태가 없으면 brewing=null, readyPotion=null, potionsBrewed=0', () => {
+    const v7 = {
+      version: 7,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        meteorsClicked: 1,
+        prestigeCancels: 0,
+        mutedPlaytimeMs: 0,
+        dragonVisits: 0,
+      },
+    }
+    const out = migrate(v7)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 8로 승격
+    expect(out!.state.brewing).toBeNull()
+    expect(out!.state.readyPotion).toBeNull()
+    expect(out!.state.potionsBrewed).toBe(0)
+  })
+
+  it('v8 세이브는 포션 조제 상태를 채택(미지 포션 id·손상 readyAt은 null로 떨군다)', () => {
+    const ok = migrate({
+      version: 8,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        brewing: { potionId: KNOWN_POTION, readyAt: 1_700_000_500_000 },
+        readyPotion: KNOWN_POTION,
+        potionsBrewed: 11.7,
+      },
+    })
+    expect(ok!.state.brewing).toEqual({ potionId: KNOWN_POTION, readyAt: 1_700_000_500_000 })
+    expect(ok!.state.readyPotion).toBe(KNOWN_POTION)
+    expect(ok!.state.potionsBrewed).toBe(11) // 내림
+    const bad = migrate({
+      version: 8,
+      savedAt: 1,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        brewing: { potionId: 'no-such-potion', readyAt: 5 }, // 미지 포션 → null
+        readyPotion: 'no-such-potion', // 미지 포션 → null
+        potionsBrewed: -3,
+      },
+    })
+    expect(bad!.state.brewing).toBeNull()
+    expect(bad!.state.readyPotion).toBeNull()
+    expect(bad!.state.potionsBrewed).toBe(0)
+    // brewing.readyAt이 비유한이면 전체 brewing을 null로(오염 방지).
+    const nanReady = migrate({
+      version: 8,
+      savedAt: 1,
+      state: { ...validState(), deviceId: 'dev-x', saveCount: 3, brewing: { potionId: KNOWN_POTION, readyAt: NaN } },
+    })
+    expect(nanReady!.state.brewing).toBeNull()
   })
 
   it('v5 세이브는 stardustUpgrades를 채택(미지 id 제거·손상값 제거·maxLevel 클램프)', () => {
