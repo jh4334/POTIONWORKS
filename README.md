@@ -10,18 +10,21 @@
 
 ```bash
 npm install
-npm run dev      # 개발 서버 (http://localhost:5173)
-npm test         # 수식 단위 테스트 (vitest)
+npm run dev      # 개발 서버 (http://localhost:5173/POTIONWORKS/)
+npm test         # 단위 테스트 (vitest)
 npm run build    # 프로덕션 빌드 → dist/
-npm run preview  # 빌드 결과 미리보기
+npm run preview  # 빌드 결과 미리보기 (http://localhost:4173/POTIONWORKS/)
 ```
+
+> `base`가 `/POTIONWORKS/`라 dev·preview 서버 모두 해당 경로 하위로 열립니다(루트 `/`는 404).
+> 다른 경로로 배포하려면 `BASE_PATH=/my-path/ npm run build`처럼 환경변수로 덮어쓸 수 있습니다.
 
 ## 배포
 
 - 공개 URL: **https://jh4334.github.io/POTIONWORKS/**
 - `main` 브랜치에 push하면 `.github/workflows/deploy.yml`이 자동으로 테스트 → 빌드 → GitHub Pages 배포를 수행합니다.
 - **최초 1회 설정 필요**: 저장소 **Settings → Pages → Build and deployment → Source** 를 **GitHub Actions** 로 지정해야 워크플로 배포가 활성화됩니다.
-- Pages 프로젝트 페이지 경로에 맞춰 빌드 시 `base: '/POTIONWORKS/'`가 적용됩니다(dev 서버는 루트 `/` 유지).
+- Pages 프로젝트 페이지 경로에 맞춰 `base: '/POTIONWORKS/'`가 dev·preview·build 모두에 적용됩니다(`BASE_PATH` 환경변수로 덮어쓰기 가능).
 
 ## 문서
 

@@ -26,6 +26,10 @@ export default function App() {
   const loadFailed = useGameStore((s) => s.loadFailed)
   const dismissLoadFailed = useGameStore((s) => s.dismissLoadFailed)
 
+  // 저장 실패 안내(D-2.5). saveNow가 저장에 실패하면 스토어에 세워둔다(1회성 경고 배너).
+  const saveFailed = useGameStore((s) => s.saveFailed)
+  const dismissSaveFailed = useGameStore((s) => s.dismissSaveFailed)
+
   // 타이틀 오버레이: 최초 방문(세이브 없음)에서만 노출. 초기값을 마운트 시 1회 고정한다.
   const [showTitle, setShowTitle] = useState(() => !hadSaveOnLoad())
 
@@ -42,6 +46,21 @@ export default function App() {
             type="button"
             className="load-failed-close"
             onClick={dismissLoadFailed}
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {saveFailed && (
+        <div className="load-failed-banner" role="alert">
+          <span className="load-failed-text">
+            저장이 되지 않고 있어요 — 브라우저 저장공간을 확인하세요.
+          </span>
+          <button
+            type="button"
+            className="load-failed-close"
+            onClick={dismissSaveFailed}
             aria-label="닫기"
           >
             ✕

@@ -44,6 +44,7 @@ function makeState(): SaveState {
     totalClicks: 321,
     totalLifetimeMana: 98765.4,
     muted: true,
+    playtimeMs: 123_456,
   }
 }
 
@@ -233,6 +234,53 @@ describe('migrate', () => {
     expect(out!.state.totalClicks).toBe(42)
     expect(out!.state.totalLifetimeMana).toBe(123456)
     expect(out!.state.muted).toBe(true)
+  })
+
+  it('v3→v4: playtimeMs 필드가 없으면 0으로 초기화', () => {
+    const v3 = {
+      version: 3,
+      savedAt: FIXED_NOW,
+      state: {
+        mana: 100,
+        basePower: 1,
+        lastTick: 5,
+        buyAmount: 1,
+        generators: {},
+        upgrades: [],
+        lifetimeMana: 777,
+        stardust: 2,
+        totalPrestiges: 1,
+        achievements: [],
+        totalClicks: 10,
+        totalLifetimeMana: 777,
+        muted: false,
+      },
+    }
+    const out = migrate(v3)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 4로 승격
+    expect(out!.state.playtimeMs).toBe(0)
+  })
+
+  it('v4 세이브는 playtimeMs를 그대로 채택(손상·음수·NaN은 0)', () => {
+    const ok = migrate({
+      version: 4,
+      savedAt: FIXED_NOW,
+      state: { ...validState(), playtimeMs: 99_999 },
+    })
+    expect(ok!.state.playtimeMs).toBe(99_999)
+    const bad = migrate({
+      version: 4,
+      savedAt: 1,
+      state: { ...validState(), playtimeMs: -5 },
+    })
+    expect(bad!.state.playtimeMs).toBe(0)
+    const nan = migrate({
+      version: 4,
+      savedAt: 1,
+      state: { ...validState(), playtimeMs: NaN },
+    })
+    expect(nan!.state.playtimeMs).toBe(0)
   })
 
   it('v3에서 통계 필드가 손상되면 안전한 fallback(totalLifetimeMana=lifetimeMana, 나머지 0/false)', () => {

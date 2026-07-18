@@ -88,6 +88,38 @@ export function totalMps(
   return total * globalMult
 }
 
+// 개당 실효 생산 = baseMps × 티어 배율 × 전체 배율(스타더스트×업적).
+// GeneratorRow의 "개당 X/s" 실효값 표시에 쓴다. 순수 함수라 generators/upgrades/stardust/업적에만
+// 의존하고 tick(마나)에는 불변 — 셀렉터에서 호출해도 tick마다 리렌더를 유발하지 않는다.
+export function effectiveGeneratorMps(
+  def: GeneratorDef,
+  purchasedUpgrades: UpgradeDef[],
+  counts: Record<string, number>,
+  globalMult: number = 1,
+): number {
+  return def.baseMps * generatorMultiplier(def.id, purchasedUpgrades, counts) * globalMult
+}
+
+// count개 추가 구매 시 전체 MPS 증가분(델타). 시너지(다른 티어 배율 변화)까지 정확히 반영하기 위해
+// 구매 전후 totalMps 차를 그대로 돌려준다. 순수 함수(마나 불변 — 셀렉터에서 안전).
+export function mpsDelta(
+  generatorId: string,
+  addCount: number,
+  counts: Record<string, number>,
+  generators: GeneratorDef[],
+  purchasedUpgrades: UpgradeDef[] = [],
+  globalMult: number = 1,
+): number {
+  const before = totalMps(counts, generators, purchasedUpgrades, globalMult)
+  const after = totalMps(
+    { ...counts, [generatorId]: (counts[generatorId] ?? 0) + addCount },
+    generators,
+    purchasedUpgrades,
+    globalMult,
+  )
+  return after - before
+}
+
 // 각성 보상: 이번 생 누적 마나로 얻는 스타더스트 = floor(sqrt(누적 마나 / 임계값)).
 // 임계 미만이면 0(sqrt<1의 floor). 정확히 임계면 1, 4배면 2, 9배면 3 …
 export function stardustFor(lifetimeMana: number): number {
@@ -130,6 +162,24 @@ export function isAchievementUnlocked(def: AchievementDef, stats: AchievementSta
       return stats.totalPrestiges >= c.min
     case 'mps':
       return stats.mps >= c.min
+  }
+}
+
+// 잠긴 업적의 현재 진행값(조건 종류별 통계 스냅샷에서 파생). 목표값은 def.condition.min.
+// AchievementsModal의 "723 / 1.00K" 진행도·진행 바에 쓰는 순수 함수.
+export function achievementCurrent(def: AchievementDef, stats: AchievementStats): number {
+  const c = def.condition
+  switch (c.kind) {
+    case 'clicks':
+      return stats.totalClicks
+    case 'generatorCount':
+      return stats.generators[c.generatorId] ?? 0
+    case 'lifetimeMana':
+      return stats.totalLifetimeMana
+    case 'prestiges':
+      return stats.totalPrestiges
+    case 'mps':
+      return stats.mps
   }
 }
 

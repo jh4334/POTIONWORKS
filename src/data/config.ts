@@ -40,6 +40,9 @@ export const TICK_REANCHOR_TOLERANCE_MS = -5000
 // 각성 임계값: 이번 생 누적 마나가 이 값 이상이어야 각성 가능(1e9).
 // 스타더스트 = floor(sqrt(누적 마나 / PRESTIGE_THRESHOLD))의 분모이기도 하다.
 export const PRESTIGE_THRESHOLD = 1e9
+// 각성 진행 게이지 노출 임계(D-2.7 온보딩): 이번 생 누적 마나가 이 값 미만이면 게이지를 숨긴다.
+// (초반 5분 신규 유저에게 1B 게이지가 조기 노출돼 혼란을 주던 문제 해소 — U1.)
+export const PRESTIGE_HINT_THRESHOLD = 1e6
 // 스타더스트 1개당 전체 생산 배율 증가분(+10% → 0.1). 배율 = 1 + stardust × 이 값.
 export const STARDUST_MULT_PER = 0.1
 

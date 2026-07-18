@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { formatNumber } from '../utils/format.ts'
-import { saveToLocal } from '../engine/save.ts'
+import { saveNow } from '../engine/autosave.ts'
 import { PRESTIGE_THRESHOLD, STARDUST_MULT_PER } from '../data/config.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
 import SaveModal from './SaveModal.tsx'
 import AchievementsModal from './AchievementsModal.tsx'
 import SettingsModal from './SettingsModal.tsx'
+import StatsModal from './StatsModal.tsx'
 
 // 마지막 저장 시각 표시용 포맷(HH:MM:SS).
 function formatClock(ms: number): string {
@@ -27,20 +28,15 @@ export default function Header() {
   const bonusPercent = Math.round(stardust * STARDUST_MULT_PER * 100)
 
   // 업적 진행도는 스토어 구독. 업적수는 배열 길이만 파생 구독(달성 시에만 변함).
-  // 음소거는 설정 모달(SettingsModal)에서 다룬다.
   const achievementCount = useGameStore((s) => s.achievements.length)
+  // 저장 성공 시각(스토어 UI 상태) — 수동/자동 저장·각성·복원이 성공하면 갱신된다(D-2.5).
+  const lastSavedAt = useGameStore((s) => s.lastSavedAt)
 
-  // 수동 저장 시각 + 백업/업적/설정 모달 열림은 순수 UI 상태 → 컴포넌트 로컬로 관리(스토어 비오염).
-  const [savedAt, setSavedAt] = useState<number | null>(null)
+  // 백업/업적/설정/통계 모달 열림은 순수 UI 상태 → 컴포넌트 로컬로 관리(스토어 비오염).
   const [showBackup, setShowBackup] = useState(false)
   const [showAchievements, setShowAchievements] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-
-  const handleSave = () => {
-    const now = Date.now()
-    saveToLocal(useGameStore.getState(), now)
-    setSavedAt(now)
-  }
+  const [showStats, setShowStats] = useState(false)
 
   return (
     <header className="header">
@@ -56,7 +52,18 @@ export default function Header() {
         )}
       </div>
       <div className="header-actions">
-        {savedAt !== null && <span className="header-saved-at">{formatClock(savedAt)} 저장됨</span>}
+        {lastSavedAt !== null && (
+          <span className="header-saved-at">{formatClock(lastSavedAt)} 저장됨</span>
+        )}
+        <button
+          type="button"
+          className="header-button"
+          onClick={() => setShowStats(true)}
+          aria-label="통계"
+          title="통계"
+        >
+          📊
+        </button>
         <button
           type="button"
           className="header-button"
@@ -65,7 +72,7 @@ export default function Header() {
         >
           🏆 {achievementCount}/{ACHIEVEMENTS.length}
         </button>
-        <button type="button" className="header-button" onClick={handleSave}>
+        <button type="button" className="header-button" onClick={() => saveNow()}>
           저장
         </button>
         <button
@@ -80,6 +87,7 @@ export default function Header() {
       </div>
       {showBackup && <SaveModal onClose={() => setShowBackup(false)} />}
       {showAchievements && <AchievementsModal onClose={() => setShowAchievements(false)} />}
+      {showStats && <StatsModal onClose={() => setShowStats(false)} />}
       {showSettings && (
         <SettingsModal
           onClose={() => setShowSettings(false)}

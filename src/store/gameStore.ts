@@ -31,6 +31,7 @@ export type BuyAmount = 1 | 10 | 'max'
 export interface OfflineGain {
   amount: number // 지급된 마나
   elapsedMs: number // 실제 자리 비운 시간(캡 적용 전, 표시용)
+  cappedMs: number // 실제 정산에 인정된 시간(min(elapsedMs, 캡)). 캡 적용 여부 표기용(D-2.6).
 }
 
 // 업적 달성 토스트(T6.1). 세이브 비포함 UI 상태. id는 렌더 key + 개별 소멸용.
@@ -42,6 +43,9 @@ export interface AchievementToast {
 export interface GameState {
   mana: number
   manaPerSecond: number
+  // 전체 생산 배율(스타더스트 배율 × 업적 배율). manaPerSecond와 함께 recalcDerived에서 캐시한다.
+  // 시설 행의 "개당 실효 X/s"·구매 델타 표시가 이 값을 곱해 쓴다(tick 불변 — 리렌더 규율 유지).
+  globalMult: number
   // clickPower는 basePower + 업그레이드 파생 캐시값. 표시·클릭에 이 값을 쓴다.
   // 진실은 basePower이며, generators/upgrades 변경 시 recalcDerived로 일괄 재계산한다.
   basePower: number
@@ -65,6 +69,13 @@ export interface GameState {
   totalLifetimeMana: number
   // 음소거(T6.2). 세이브에 포함(v3). 사운드 재생 여부는 이 값을 sound.setMuted로 반영해 판단한다.
   muted: boolean
+  // 플레이 시간 누적(D-2.3, ms). 세이브에 포함(v4). tick에서 실제 경과를 그대로 누적(오프라인 캡 무관).
+  playtimeMs: number
+  // 마지막 저장 성공 시각(세이브 비포함 UI 상태, D-2.5). null이면 아직 저장된 적 없음.
+  // 수동 저장·자동 저장·각성/복원 저장이 성공하면 갱신 → 헤더 "HH:MM:SS 저장됨" 표시.
+  lastSavedAt: number | null
+  // 저장 실패(세이브 비포함 UI 상태, D-2.5). true면 App이 1회성 경고 배너를 띄운다.
+  saveFailed: boolean
   // 오프라인 수익 팝업(세이브 비포함 UI 상태). null이면 팝업 없음.
   offlineGain: OfflineGain | null
   // 세이브 로드 실패(세이브 비포함 UI 상태). true면 App이 1회성 안내를 띄운다.
@@ -91,7 +102,8 @@ export interface GameState {
   // 하드리셋: 초기 상태로 되돌리고 localStorage 세이브 삭제(설정 UI는 M8, 지금은 액션+치트용).
   hardReset: () => void
   // 오프라인 수익 지급: 마나 적립 + lastTick=now(이중 지급 금지) + 팝업 상태 세팅.
-  applyOfflineEarnings: (amount: number, now: number, elapsedMs: number) => void
+  // cappedMs=실제 정산 인정 시간(캡 적용 여부 표기용).
+  applyOfflineEarnings: (amount: number, now: number, elapsedMs: number, cappedMs: number) => void
   // 60초 미만 부재 조용한 지급(D-1.5): 마나 적립 + lastTick=now, 팝업 없음. 이중 지급 금지.
   applySilentEarnings: (amount: number, now: number) => void
   // 오프라인 팝업 닫기.
@@ -99,6 +111,10 @@ export interface GameState {
   // 세이브 로드 실패 표시 세팅/해제(loadGame이 corrupt 감지 시 mark, App 배너 닫기 시 dismiss).
   markLoadFailed: () => void
   dismissLoadFailed: () => void
+  // 저장 성공/실패 표시(D-2.5). saveNow가 저장 결과에 따라 호출한다.
+  markSaved: (now: number) => void
+  markSaveFailed: () => void
+  dismissSaveFailed: () => void
   // 각성(T5.1): 조건(lifetimeMana >= 임계) 충족 시 stardust += stardustFor(lifetimeMana),
   //   totalPrestiges += 1, 그리고 마나/시설/업그레이드/buyAmount/lifetimeMana 초기화.
   //   유지: stardust, totalPrestiges, 업적·통계. 리셋 후 파생값(MPS·clickPower) 재계산.
@@ -134,6 +150,7 @@ function createInitialState() {
   return {
     mana: 0,
     manaPerSecond: 0,
+    globalMult: 1,
     basePower: INITIAL_CLICK_POWER,
     clickPower: INITIAL_CLICK_POWER,
     generators: initialGenerators(),
@@ -147,6 +164,9 @@ function createInitialState() {
     totalClicks: 0,
     totalLifetimeMana: 0,
     muted: false,
+    playtimeMs: 0,
+    lastSavedAt: null as number | null,
+    saveFailed: false,
     offlineGain: null as OfflineGain | null,
     loadFailed: false,
     toasts: [] as AchievementToast[],
@@ -165,11 +185,11 @@ function recalcDerived(
   basePower: number,
   stardust: number,
   achievementCount: number,
-): { manaPerSecond: number; clickPower: number } {
+): { manaPerSecond: number; clickPower: number; globalMult: number } {
   const ups = resolveUpgrades(upgradeIds)
   const globalMult = stardustMultiplier(stardust) * achievementMultiplier(achievementCount)
   const manaPerSecond = totalMps(generators, GENERATORS, ups, globalMult)
-  return { manaPerSecond, clickPower: computeClickPower(basePower, manaPerSecond, ups) }
+  return { manaPerSecond, clickPower: computeClickPower(basePower, manaPerSecond, ups), globalMult }
 }
 
 // 토스트 id 카운터(UI 전용, 세이브 비포함). 모듈 스코프면 충분하다.
@@ -277,6 +297,8 @@ export const useGameStore = create<GameState>()((set) => ({
         lifetimeMana: s.lifetimeMana + gained, // 생산 획득도 누적 마나에 반영
         totalLifetimeMana: s.totalLifetimeMana + gained, // 전생 포함 총 누적(각성해도 유지)
         lastTick: now,
+        // 플레이 시간은 실제 경과를 그대로 누적한다(오프라인 캡·효율과 무관 — 통계 표시 전용).
+        playtimeMs: s.playtimeMs + elapsedMs,
       }
       if (now - s.lastAchievementCheckAt < ACHIEVEMENT_CHECK_INTERVAL_MS) return partial
       return { ...withAchievements(s, partial), lastAchievementCheckAt: now }
@@ -306,6 +328,7 @@ export const useGameStore = create<GameState>()((set) => ({
         totalClicks: st.totalClicks,
         totalLifetimeMana: st.totalLifetimeMana,
         muted: st.muted,
+        playtimeMs: st.playtimeMs,
         // 로드 시 토스트는 띄우지 않는다(이미 달성한 것). 스로틀 시각도 초기화.
         toasts: s.toasts,
         lastAchievementCheckAt: 0,
@@ -318,14 +341,14 @@ export const useGameStore = create<GameState>()((set) => ({
     set(() => createInitialState())
   },
 
-  applyOfflineEarnings: (amount, now, elapsedMs) =>
+  applyOfflineEarnings: (amount, now, elapsedMs, cappedMs) =>
     set((s) =>
       withAchievements(s, {
         mana: s.mana + amount,
         lifetimeMana: s.lifetimeMana + amount, // 오프라인 획득도 누적 마나에 반영
         totalLifetimeMana: s.totalLifetimeMana + amount,
         lastTick: now, // 이중 지급 금지: 오프라인으로 인정한 구간을 tick이 또 세지 않게 한다.
-        offlineGain: { amount, elapsedMs },
+        offlineGain: { amount, elapsedMs, cappedMs },
       }),
     ),
 
@@ -344,6 +367,11 @@ export const useGameStore = create<GameState>()((set) => ({
 
   markLoadFailed: () => set({ loadFailed: true }),
   dismissLoadFailed: () => set({ loadFailed: false }),
+
+  // 저장 성공: 시각 갱신 + 실패 배너 해제. 저장 실패: 배너 세우기. 닫기: 배너만 해제(D-2.5).
+  markSaved: (now) => set({ lastSavedAt: now, saveFailed: false }),
+  markSaveFailed: () => set({ saveFailed: true }),
+  dismissSaveFailed: () => set({ saveFailed: false }),
 
   // 각성: 이번 생 누적 마나로 스타더스트를 얻고 진행을 초기화한다.
   // 조건 미달(lifetimeMana < 임계 또는 보상 0)이면 아무것도 하지 않는다(UI에서도 막지만 방어).

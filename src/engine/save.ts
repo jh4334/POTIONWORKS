@@ -13,7 +13,8 @@ import type { BuyAmount } from '../store/gameStore.ts'
 // 세이브 스키마 버전. 필드 구조를 바꾸면 올리고 migrate에 단계 추가.
 // v2(T5.1): 각성 필드(lifetimeMana/stardust/totalPrestiges) 추가.
 // v3(T6.1/T6.2): 업적/통계(achievements/totalClicks/totalLifetimeMana) + 음소거(muted) 추가.
-export const SAVE_VERSION = 3
+// v4(D-2.3): 플레이 시간(playtimeMs) 추가 — 통계 패널용 실제 경과 누적(캡 무관).
+export const SAVE_VERSION = 4
 
 // 직렬화 대상(진실만). 파생값은 제외.
 export interface SaveState {
@@ -33,6 +34,8 @@ export interface SaveState {
   totalLifetimeMana: number
   // 음소거(v3).
   muted: boolean
+  // 플레이 시간 누적(v4, ms). tick에서 실제 경과를 그대로 누적(오프라인 캡과 무관). 통계 표시용.
+  playtimeMs: number
 }
 
 export interface SaveData {
@@ -65,6 +68,7 @@ export function toSaveData(state: SaveState, now: number = Date.now()): SaveData
       totalClicks: state.totalClicks,
       totalLifetimeMana: state.totalLifetimeMana,
       muted: state.muted,
+      playtimeMs: state.playtimeMs,
     },
   }
 }
@@ -143,6 +147,7 @@ function normalizeAchievements(v: unknown): string[] {
 //   stardust=0, totalPrestiges=0으로 초기화한다.
 // v2→v3: 업적/통계 필드가 없으므로 achievements=[], totalClicks=0,
 //   totalLifetimeMana=lifetimeMana(이번 생 누적을 총 누적의 출발값으로), muted=false.
+// v3→v4: playtimeMs가 없으므로 0으로 초기화한다.
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
     console.warn('[save] 세이브가 객체가 아닙니다 — 무시합니다.')
@@ -188,6 +193,10 @@ export function migrate(raw: unknown): SaveData | null {
   const totalLifetimeMana = isV3Plus ? normalizeNonNeg(s.totalLifetimeMana, lifetimeMana) : lifetimeMana
   const muted = isV3Plus ? s.muted === true : false
 
+  // v3 이하엔 playtimeMs 필드가 없다 → 0으로 시작. v4 이상은 검증해 채택(누락·손상 시 0).
+  const isV4Plus = raw.version >= 4
+  const playtimeMs = isV4Plus ? normalizeNonNeg(s.playtimeMs, 0) : 0
+
   return {
     version: SAVE_VERSION,
     savedAt: raw.savedAt,
@@ -205,6 +214,7 @@ export function migrate(raw: unknown): SaveData | null {
       totalClicks,
       totalLifetimeMana,
       muted,
+      playtimeMs,
     },
   }
 }
@@ -222,6 +232,7 @@ function hasFiniteNumbers(state: SaveState): boolean {
     state.totalPrestiges,
     state.totalClicks,
     state.totalLifetimeMana,
+    state.playtimeMs,
   ]
   for (const n of scalars) {
     if (typeof n !== 'number' || !Number.isFinite(n)) return false
@@ -232,15 +243,19 @@ function hasFiniteNumbers(state: SaveState): boolean {
   return true
 }
 
-export function saveToLocal(state: SaveState, now?: number): void {
+// 성공하면 true, 실패(비유한 수치 스킵·localStorage 예외)하면 false를 돌려준다(D-2.5).
+// 호출부(autosave.saveNow)가 이 값으로 "저장됨" 시각 갱신 또는 저장 실패 배너를 띄운다.
+export function saveToLocal(state: SaveState, now?: number): boolean {
   if (!hasFiniteNumbers(state)) {
     console.warn('[save] 상태에 비유한 수치가 있어 저장을 건너뜁니다(마지막 정상 세이브 보호).')
-    return
+    return false
   }
   try {
     localStorage.setItem(SAVE_KEY, serialize(state, now))
+    return true
   } catch {
     console.warn('[save] localStorage 저장 실패(용량/권한).')
+    return false
   }
 }
 

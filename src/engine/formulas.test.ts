@@ -8,9 +8,12 @@ import {
   clickPower,
   isUpgradeUnlocked,
   isAchievementUnlocked,
+  achievementCurrent,
   stardustFor,
   stardustMultiplier,
   achievementMultiplier,
+  effectiveGeneratorMps,
+  mpsDelta,
   type AchievementStats,
 } from './formulas.ts'
 import { COST_GROWTH, type GeneratorDef } from '../data/generators.ts'
@@ -197,6 +200,76 @@ describe('totalMps', () => {
     expect(totalMps({ a: 10, b: 3 }, gens, [], 1)).toBeCloseTo(base)
     expect(totalMps({ a: 10, b: 3 }, gens, [], 1.1)).toBeCloseTo(base * 1.1)
     expect(totalMps({ a: 10, b: 3 }, gens, [], 2)).toBeCloseTo(base * 2)
+  })
+})
+
+describe('effectiveGeneratorMps', () => {
+  const genA: GeneratorDef = { id: 'a', tier: 1, name: 'A', icon: '', baseCost: 15, baseMps: 0.1 }
+  const genB: GeneratorDef = { id: 'b', tier: 2, name: 'B', icon: '', baseCost: 100, baseMps: 1 }
+
+  it('업그레이드·배율 없으면 baseMps 그대로', () => {
+    expect(effectiveGeneratorMps(genA, [], {})).toBeCloseTo(0.1)
+  })
+
+  it('티어 배율(×2)과 전체 배율을 곱한다', () => {
+    // b: 1 × 2(마일스톤) × 1.5(전체) = 3
+    expect(effectiveGeneratorMps(genB, [mult2('b')], {}, 1.5)).toBeCloseTo(3)
+  })
+
+  it('시너지 소스 보유수를 반영', () => {
+    // b 개당: 1 × (1 + 10×1/100) = 1.1
+    expect(effectiveGeneratorMps(genB, [synergy('a', 'b', 1)], { a: 10 })).toBeCloseTo(1.1)
+  })
+})
+
+describe('mpsDelta', () => {
+  const gens: GeneratorDef[] = [
+    { id: 'a', tier: 1, name: 'A', icon: '', baseCost: 15, baseMps: 0.1 },
+    { id: 'b', tier: 2, name: 'B', icon: '', baseCost: 100, baseMps: 1 },
+  ]
+
+  it('추가 구매분의 전체 MPS 증가 = 개당 실효 × 개수', () => {
+    // a 10개 추가: 10 × 0.1 = 1
+    expect(mpsDelta('a', 10, { a: 0, b: 0 }, gens)).toBeCloseTo(1)
+  })
+
+  it('전체 배율을 반영', () => {
+    expect(mpsDelta('a', 10, { a: 0, b: 0 }, gens, [], 2)).toBeCloseTo(2)
+  })
+
+  it('시너지: 소스 시설 추가는 대상 시설 생산 증가분까지 포함', () => {
+    // synergy a→b +1%/개. b 3개 보유 상태에서 a 10개 추가:
+    // before: a 0 → b 3×1 = 3. after: a 10 → b 3×(1+10×1/100)=3.3, a 10×0.1=1 → 4.3. 델타 = 1.3
+    expect(mpsDelta('a', 10, { a: 0, b: 3 }, gens, [synergy('a', 'b', 1)])).toBeCloseTo(1.3)
+  })
+})
+
+describe('achievementCurrent', () => {
+  function ach(condition: AchievementDef['condition']): AchievementDef {
+    return { id: 'x', name: '', desc: '', condition }
+  }
+  const stats: AchievementStats = {
+    totalClicks: 42,
+    generators: { apprentice: 7 },
+    totalLifetimeMana: 12345,
+    totalPrestiges: 3,
+    mps: 99,
+  }
+
+  it('조건 종류별 현재값을 통계에서 파생', () => {
+    expect(achievementCurrent(ach({ kind: 'clicks', min: 100 }), stats)).toBe(42)
+    expect(
+      achievementCurrent(ach({ kind: 'generatorCount', generatorId: 'apprentice', min: 50 }), stats),
+    ).toBe(7)
+    expect(achievementCurrent(ach({ kind: 'lifetimeMana', min: 1e6 }), stats)).toBe(12345)
+    expect(achievementCurrent(ach({ kind: 'prestiges', min: 5 }), stats)).toBe(3)
+    expect(achievementCurrent(ach({ kind: 'mps', min: 100 }), stats)).toBe(99)
+  })
+
+  it('보유하지 않은 시설은 0', () => {
+    expect(
+      achievementCurrent(ach({ kind: 'generatorCount', generatorId: 'cauldron', min: 1 }), stats),
+    ).toBe(0)
   })
 })
 

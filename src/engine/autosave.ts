@@ -3,7 +3,7 @@
 import { useGameStore } from '../store/gameStore.ts'
 import { saveToLocal, loadFromLocalResult } from './save.ts'
 import { offlineEarnings } from './offline.ts'
-import { AUTOSAVE_INTERVAL_MS, OFFLINE_MIN_MS } from '../data/config.ts'
+import { AUTOSAVE_INTERVAL_MS, OFFLINE_MIN_MS, OFFLINE_CAP_MS } from '../data/config.ts'
 
 // 앱 시작 시 세이브가 있었는지(=재방문인지) 기록. 타이틀 오버레이는 최초 방문에서만 띄운다(T8.2).
 // loadGame이 렌더 전에 1회 실행되므로, App 최초 마운트 시점에 이 값이 확정돼 있다.
@@ -25,6 +25,16 @@ export function hardResetAndReload(): void {
   suspendAutosave()
   useGameStore.getState().hardReset()
   window.location.reload()
+}
+
+// 저장 + 결과에 따른 UI 상태 갱신(D-2.5). 성공하면 "저장됨" 시각 갱신, 실패하면 경고 배너.
+// 수동 저장(Header)·각성 직후·복원 직후가 공통으로 이 경로를 쓴다. true=성공.
+export function saveNow(now: number = Date.now()): boolean {
+  const ok = saveToLocal(useGameStore.getState(), now)
+  const store = useGameStore.getState()
+  if (ok) store.markSaved(now)
+  else store.markSaveFailed()
+  return ok
 }
 
 // 앱 시작 시 1회: 세이브 로드 → 오프라인 수익 지급.
@@ -52,8 +62,10 @@ export function loadGame(): void {
 
   if (elapsedMs >= OFFLINE_MIN_MS) {
     // 60초 이상 부재: 오프라인 정책(50%/8h) 적용 + 팝업.
+    // cappedMs=실제 정산에 인정된 시간(min(경과, 캡)) — 팝업에서 캡 적용 여부를 정확히 표기한다(D-2.6).
     const amount = offlineEarnings(elapsedMs, mps)
-    if (amount > 0) useGameStore.getState().applyOfflineEarnings(amount, now, elapsedMs)
+    const cappedMs = Math.min(elapsedMs, OFFLINE_CAP_MS)
+    if (amount > 0) useGameStore.getState().applyOfflineEarnings(amount, now, elapsedMs, cappedMs)
   } else if (elapsedMs > 0 && mps > 0) {
     // 60초 미만 부재(D-1.5): 팝업 없이 100%를 조용히 지급. lastTick=now로 이중 지급 없음.
     useGameStore.getState().applySilentEarnings(mps * (elapsedMs / 1000), now)
@@ -65,7 +77,8 @@ export function loadGame(): void {
 export function startAutosave(): () => void {
   const save = () => {
     if (autosaveSuspended) return // 하드리셋 진행 중이면 저장 금지(경합 방지)
-    saveToLocal(useGameStore.getState())
+    // 자동저장 성공 시에도 "저장됨" 시각을 갱신한다(D-2.5) — 수동 저장과 동일 경로.
+    saveNow()
   }
 
   const intervalId = setInterval(save, AUTOSAVE_INTERVAL_MS)

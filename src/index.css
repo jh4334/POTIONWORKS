@@ -459,8 +459,9 @@ a,
   color: var(--text);
 }
 
+/* 활성 토글: 밝은 보라 배경 위 어두운 텍스트로 대비 4.5:1 확보(D-2.8). */
 .buy-amount-option.active {
-  color: var(--text);
+  color: var(--bg);
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -925,4 +926,134 @@ a,
     align-items: center;
     justify-content: center;
   }
+}
+
+/* D-2.2 클릭당 획득 상시 표시 — 솥 아래. */
+.click-power-label {
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* D-2.2 시설 실효값 — "총 X/s (전체의 N%)". */
+.generator-total {
+  color: var(--text-dim);
+}
+
+/* D-2.2 구매 델타 — 버튼 안 작은 초록 표기. */
+.generator-buy-delta {
+  font-size: 10px;
+  font-weight: 700;
+  color: #7ee0a1;
+}
+
+/* D-2.8 구매 불가(aria-disabled) — disabled 룩 유지하되 가격 숫자 색은 낮추지 않는다(대비 유지). */
+.generator-buy[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+.generator-buy[aria-disabled='true'] .generator-buy-delta {
+  color: var(--text-dim);
+}
+
+/* D-2.4 업적 보너스 합계 + 진행도 바. */
+.achievement-bonus {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.achievement-bonus strong {
+  color: #ffd76a;
+}
+
+.achievement-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.achievement-progress-bar {
+  flex: 1;
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.achievement-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.achievement-progress-text {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* D-2.7 각성 진행 게이지 바(힌트 임계~각성 임계 구간). */
+.prestige-progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.prestige-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffe08a, #ffb648);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* D-2.3 통계 패널 */
+.stats-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stats-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.stats-row-label {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.stats-row-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-bonus-title {
+  margin: 16px 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* D-2.5 복원 완료 피드백 + 덮어쓰기 확인 경고. */
+.modal-restored {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #7ee0a1;
+}
+
+.modal-confirm-warn {
+  margin: 8px 0 0;
 }

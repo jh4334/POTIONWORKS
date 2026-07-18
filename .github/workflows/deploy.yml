@@ -6,11 +6,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# GitHub Pages 배포에 필요한 권한(OIDC 토큰 포함).
+# 기본 권한은 최소(읽기)로 두고, 배포에 필요한 권한은 deploy job에만 부여한다(D-2.9 최소 권한).
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # 동시에 여러 배포가 겹치지 않게 직렬화(진행 중인 실행은 취소하지 않음).
 concurrency:
@@ -20,6 +18,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 빌드는 소스 읽기 권한만 필요.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,6 +38,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Pages 배포(OIDC 토큰 포함) 권한은 이 job에만 스코핑.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
