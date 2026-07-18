@@ -4,6 +4,7 @@ import { ACHIEVEMENTS } from '../data/achievements.ts'
 import { ACHIEVEMENT_MULT_PER } from '../data/config.ts'
 import { achievementCurrent, type AchievementStats } from '../engine/formulas.ts'
 import { formatNumber } from '../utils/format.ts'
+import { STRINGS } from '../data/strings.ts'
 import Modal from './Modal.tsx'
 
 // T6.1 업적 목록 모달 — 달성=밝게+체크, 미달성=진행도(현재/목표)+진행 바.
@@ -35,13 +36,13 @@ export default function AchievementsModal({ onClose }: Props) {
       wide
       title={
         <>
-          업적 <span className="achievement-count">{count}/{ACHIEVEMENTS.length}</span>
+          {STRINGS.achievements.title} <span className="achievement-count">{count}/{ACHIEVEMENTS.length}</span>
         </>
       }
       onClose={onClose}
     >
       <p className="achievement-bonus">
-        업적 보너스: <strong>+{bonusPercent}%</strong> 생산
+        {STRINGS.achievements.bonusLead} <strong>+{bonusPercent}%</strong>{STRINGS.achievements.bonusTail}
       </p>
       <div className="achievement-grid">
         {ACHIEVEMENTS.map((a) => {
@@ -56,7 +57,7 @@ export default function AchievementsModal({ onClose }: Props) {
             >
               <span className="achievement-item-mark">{done ? '✅' : '🔒'}</span>
               <div className="achievement-item-body">
-                <div className="achievement-item-name">{done ? a.name : '???'}</div>
+                <div className="achievement-item-name">{done ? a.name : STRINGS.achievements.lockedName}</div>
                 <div className="achievement-item-desc">{a.desc}</div>
                 {!done && (
                   <div className="achievement-progress">
@@ -78,7 +79,7 @@ export default function AchievementsModal({ onClose }: Props) {
       </div>
       <div className="modal-actions">
         <button type="button" className="modal-button modal-button--primary" onClick={onClose}>
-          닫기
+          {STRINGS.common.close}
         </button>
       </div>
     </Modal>

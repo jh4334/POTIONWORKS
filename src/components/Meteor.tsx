@@ -5,6 +5,7 @@ import {
   METEOR_MAX_INTERVAL_MS,
   METEOR_LIFETIME_MS,
 } from '../data/config.ts'
+import { STRINGS } from '../data/strings.ts'
 
 // D-4.6 골든 이벤트 유성. tick과 무관한 로컬 setTimeout으로 다음 출현을 예약(랜덤 3~8분).
 // 출현하면 좌→우 포물선으로 흐르는 ☄️(12초). 클릭하면 activateMeteorBuff(버프+토스트+버스트).
@@ -66,7 +67,7 @@ export default function Meteor() {
       type="button"
       className="meteor"
       style={{ top: `${top}%` }}
-      aria-label="유성 — 클릭하면 마나 폭주 버프"
+      aria-label={STRINGS.meteor.aria}
       onClick={handleClick}
     >
       ☄️

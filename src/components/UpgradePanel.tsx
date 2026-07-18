@@ -5,6 +5,7 @@ import { UPGRADES, type UpgradeDef } from '../data/upgrades.ts'
 import { isUpgradeUnlocked } from '../engine/formulas.ts'
 import { formatNumber } from '../utils/format.ts'
 import { playDing } from '../engine/sound.ts'
+import { STRINGS } from '../data/strings.ts'
 
 // 노출 정책(T3.1): 해금됐고 아직 안 산 업그레이드만 카드로 노출.
 // 조건 미달은 숨김, 구매하면 목록에서 사라진다.
@@ -27,7 +28,7 @@ export default function UpgradePanel() {
 
   return (
     <div className="upgrade-panel">
-      <h2 className="upgrade-panel-title">업그레이드</h2>
+      <h2 className="upgrade-panel-title">{STRINGS.upgrade.panelTitle}</h2>
       <div className="upgrade-cards">
         {visibleIds.map((id) => (
           <UpgradeCard key={id} def={UPGRADES.find((u) => u.id === id)!} />

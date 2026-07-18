@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { hardResetAndReload } from '../engine/autosave.ts'
+import { STRINGS } from '../data/strings.ts'
 import Modal from './Modal.tsx'
 
 // T8.2 설정 모달. 음소거 토글 / 세이브 백업 열기 / 하드리셋(2단계 확인) / 버전·크레딧.
@@ -27,49 +28,48 @@ export default function SettingsModal({ onClose, onOpenBackup }: Props) {
   }
 
   return (
-    <Modal title="설정 ⚙️" onClose={onClose}>
+    <Modal title={STRINGS.settings.title} onClose={onClose}>
       <div className="settings-row">
-        <span className="settings-row-label">사운드</span>
+        <span className="settings-row-label">{STRINGS.settings.sound}</span>
         <button type="button" className="modal-button" onClick={toggleMuted}>
-          {muted ? '🔇 음소거됨' : '🔊 켜짐'}
+          {muted ? STRINGS.settings.muted : STRINGS.settings.unmuted}
         </button>
       </div>
 
       <div className="settings-row">
-        <span className="settings-row-label">세이브 백업</span>
+        <span className="settings-row-label">{STRINGS.settings.backup}</span>
         <button type="button" className="modal-button" onClick={onOpenBackup}>
-          내보내기 / 불러오기
+          {STRINGS.settings.backupButton}
         </button>
       </div>
 
       <div className="settings-row">
-        <span className="settings-row-label">진행 초기화</span>
+        <span className="settings-row-label">{STRINGS.settings.reset}</span>
         <button
           type="button"
           className={`modal-button${confirmReset ? ' modal-button--danger' : ''}`}
           onClick={handleReset}
         >
-          {confirmReset ? '정말요? 되돌릴 수 없어요' : '하드 리셋'}
+          {confirmReset ? STRINGS.settings.resetConfirm : STRINGS.settings.resetButton}
         </button>
       </div>
       {confirmReset && (
         <p className="modal-sub settings-reset-warn">
-          모든 진행(마나·시설·업그레이드·각성·업적)이 삭제됩니다. 초기화 전에 백업 내보내기를 권장해요.
-          한 번 더 누르면 초기화 후 새로고침돼요.{' '}
+          {STRINGS.settings.resetWarn}{' '}
           <button type="button" className="settings-link" onClick={() => setConfirmReset(false)}>
-            취소
+            {STRINGS.common.cancel}
           </button>
         </p>
       )}
 
       <div className="settings-footer">
         <span className="settings-version">POTIONWORKS v{__APP_VERSION__}</span>
-        <span className="settings-credit">🧪 포션 공방 방치형 · 만든이 POTIONWORKS</span>
+        <span className="settings-credit">{STRINGS.settings.credit}</span>
       </div>
 
       <div className="modal-actions">
         <button type="button" className="modal-button modal-button--primary" onClick={onClose}>
-          닫기
+          {STRINGS.common.close}
         </button>
       </div>
     </Modal>

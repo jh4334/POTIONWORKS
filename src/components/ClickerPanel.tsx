@@ -9,6 +9,7 @@ import {
 import { useGameStore } from '../store/gameStore.ts'
 import { formatNumber } from '../utils/format.ts'
 import { playClick } from '../engine/sound.ts'
+import { STRINGS } from '../data/strings.ts'
 import AmbientBubbles from './AmbientBubbles.tsx'
 
 // T1.2 클릭 숫자 팝: 순수 UI 이펙트라 게임 상태(store)가 아니라 로컬 상태로 관리한다.
@@ -96,7 +97,7 @@ export default function ClickerPanel() {
       <button
         type="button"
         className={`cauldron-button${shaking ? ' shake' : ''}`}
-        aria-label="솥 클릭"
+        aria-label={STRINGS.clicker.cauldronAria}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         onAnimationEnd={(e) => {
@@ -105,7 +106,7 @@ export default function ClickerPanel() {
         }}
       >
         <span className="cauldron-emoji">🫧</span>
-        <span className="cauldron-label">솥을 저어라</span>
+        <span className="cauldron-label">{STRINGS.clicker.cauldronLabel}</span>
         {pops.map((pop) => (
           <span
             key={pop.id}
@@ -123,7 +124,7 @@ export default function ClickerPanel() {
         ))}
       </button>
       {/* 클릭당 획득량 상시 표시(U8). clickPower는 구매/업그레이드 시에만 변함. */}
-      <div className="click-power-label">클릭당 +{formatNumber(clickPower)}</div>
+      <div className="click-power-label">{STRINGS.clicker.perClick(formatNumber(clickPower))}</div>
     </div>
   )
 }

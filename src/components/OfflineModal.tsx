@@ -1,6 +1,7 @@
 import { useGameStore } from '../store/gameStore.ts'
 import { formatNumber } from '../utils/format.ts'
 import { OFFLINE_EFFICIENCY } from '../data/config.ts'
+import { STRINGS } from '../data/strings.ts'
 import Modal from './Modal.tsx'
 
 // T4.3 오프라인 수익 환영 팝업. 표시값은 스토어의 offlineGain(UI 상태, 세이브 비포함).
@@ -13,9 +14,9 @@ function formatDuration(ms: number): string {
   const minutes = Math.floor((totalSec % 3600) / 60)
   const seconds = totalSec % 60
   const parts: string[] = []
-  if (hours > 0) parts.push(`${hours}시간`)
-  if (minutes > 0) parts.push(`${minutes}분`)
-  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}초`)
+  if (hours > 0) parts.push(STRINGS.duration.hours(hours))
+  if (minutes > 0) parts.push(STRINGS.duration.minutes(minutes))
+  if (seconds > 0 || parts.length === 0) parts.push(STRINGS.duration.seconds(seconds))
   return parts.join(' ')
 }
 
@@ -32,25 +33,28 @@ export default function OfflineModal() {
   const capped = gain.elapsedMs > gain.cappedMs
 
   return (
-    <Modal title="돌아온 걸 환영해요! 🧪" onClose={dismiss}>
+    <Modal title={STRINGS.offline.title} onClose={dismiss}>
       <p className="modal-body">
-        자리 비운 동안{' '}
-        <strong className="offline-amount">+{formatNumber(Math.floor(gain.amount))}</strong> 마나를
-        벌었어요.
+        {STRINGS.offline.bodyLead}{' '}
+        <strong className="offline-amount">+{formatNumber(Math.floor(gain.amount))}</strong>
+        {STRINGS.offline.bodyTail}
       </p>
       {capped ? (
         <p className="modal-sub">
-          {formatDuration(gain.elapsedMs)} 자리 비움 → 최대 {formatDuration(gain.cappedMs)} 정산 · 효율{' '}
-          {EFFICIENCY_PERCENT}%
+          {STRINGS.offline.cappedSub(
+            formatDuration(gain.elapsedMs),
+            formatDuration(gain.cappedMs),
+            EFFICIENCY_PERCENT,
+          )}
         </p>
       ) : (
         <p className="modal-sub">
-          {formatDuration(gain.elapsedMs)} 자리 비움 · 효율 {EFFICIENCY_PERCENT}%
+          {STRINGS.offline.sub(formatDuration(gain.elapsedMs), EFFICIENCY_PERCENT)}
         </p>
       )}
       <div className="modal-actions">
         <button type="button" className="modal-button modal-button--primary" onClick={dismiss}>
-          확인
+          {STRINGS.common.confirm}
         </button>
       </div>
     </Modal>

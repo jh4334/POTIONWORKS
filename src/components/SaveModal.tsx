@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { exportSave, importSave } from '../engine/save.ts'
 import { saveNow } from '../engine/autosave.ts'
+import { STRINGS } from '../data/strings.ts'
 import Modal from './Modal.tsx'
 
 // T4.2 백업(export/import) 모달. 열림 상태는 부모(Header)의 로컬 상태.
@@ -36,14 +37,14 @@ export default function SaveModal({ onClose }: Props) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
-      setError('클립보드 복사에 실패했어요. 직접 선택해 복사해 주세요.')
+      setError(STRINGS.save.copyError)
     }
   }
 
   const handleImport = () => {
     const save = importSave(importStr)
     if (!save) {
-      setError('잘못된 백업 문자열이에요. 다시 확인해 주세요.')
+      setError(STRINGS.save.importError)
       setConfirmImport(false)
       return
     }
@@ -61,21 +62,21 @@ export default function SaveModal({ onClose }: Props) {
   }
 
   return (
-    <Modal title="세이브 백업" onClose={onClose}>
-      <label className="modal-label">내보내기 (이 문자열을 보관하세요)</label>
+    <Modal title={STRINGS.save.title} onClose={onClose}>
+      <label className="modal-label">{STRINGS.save.exportLabel}</label>
       <textarea className="modal-textarea" readOnly value={exportStr} rows={3} />
       <div className="modal-actions modal-actions--left">
         <button type="button" className="modal-button" onClick={handleCopy}>
-          {copied ? '복사됨!' : '복사'}
+          {copied ? STRINGS.save.copied : STRINGS.save.copy}
         </button>
       </div>
 
-      <label className="modal-label">불러오기 (백업 문자열을 붙여넣으세요)</label>
+      <label className="modal-label">{STRINGS.save.importLabel}</label>
       <textarea
         className="modal-textarea"
         value={importStr}
         rows={3}
-        placeholder="여기에 붙여넣기…"
+        placeholder={STRINGS.save.importPlaceholder}
         onChange={(e) => {
           setImportStr(e.target.value)
           setError(null)
@@ -83,19 +84,19 @@ export default function SaveModal({ onClose }: Props) {
         }}
       />
       {error && <p className="modal-error">{error}</p>}
-      {restored && <p className="modal-restored">복원 완료! ✨</p>}
+      {restored && <p className="modal-restored">{STRINGS.save.restored}</p>}
       {confirmImport && !restored && (
         <p className="modal-sub modal-confirm-warn">
-          현재 진행 상황을 덮어씁니다. 한 번 더 누르면 복원돼요.{' '}
+          {STRINGS.save.overwriteWarn}{' '}
           <button type="button" className="settings-link" onClick={() => setConfirmImport(false)}>
-            취소
+            {STRINGS.common.cancel}
           </button>
         </p>
       )}
 
       <div className="modal-actions">
         <button type="button" className="modal-button" onClick={onClose}>
-          닫기
+          {STRINGS.common.close}
         </button>
         <button
           type="button"
@@ -103,7 +104,7 @@ export default function SaveModal({ onClose }: Props) {
           onClick={handleImport}
           disabled={importStr.trim().length === 0 || restored}
         >
-          {confirmImport ? '정말 덮어쓸까요?' : '불러오기'}
+          {confirmImport ? STRINGS.save.confirmOverwrite : STRINGS.save.import}
         </button>
       </div>
     </Modal>

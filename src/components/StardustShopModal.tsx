@@ -5,6 +5,7 @@ import { stardustUpgradeCost } from '../engine/formulas.ts'
 import { OFFLINE_EFFICIENCY, OFFLINE_CAP_MS } from '../data/config.ts'
 import { formatNumber } from '../utils/format.ts'
 import { playDing } from '../engine/sound.ts'
+import { STRINGS } from '../data/strings.ts'
 import Modal from './Modal.tsx'
 
 // D-3.1 스타더스트 상점. 각성 화폐(스타더스트)의 소비처 — 각성해도 유지되는 영구 강화 트랙.
@@ -21,13 +22,17 @@ function nextEffectLabel(def: StardustUpgradeDef, level: number): string {
   const e = def.effect
   switch (e.kind) {
     case 'startingApprentices':
-      return `각성 시 견습생 ${e.perLevel * next}명 보유 시작`
+      return STRINGS.stardustShop.effectStartingApprentices(e.perLevel * next)
     case 'clickMpsPercent':
-      return `클릭 = MPS의 +${e.perLevel * next}%p`
+      return STRINGS.stardustShop.effectClickMps(e.perLevel * next)
     case 'offlineEfficiency':
-      return `오프라인 효율 ${Math.round((OFFLINE_EFFICIENCY + e.perLevel * next) * 100)}%`
+      return STRINGS.stardustShop.effectOfflineEfficiency(
+        Math.round((OFFLINE_EFFICIENCY + e.perLevel * next) * 100),
+      )
     case 'offlineCap':
-      return `오프라인 캡 ${Math.round((OFFLINE_CAP_MS + e.perLevelMs * next) / 3_600_000)}시간`
+      return STRINGS.stardustShop.effectOfflineCap(
+        Math.round((OFFLINE_CAP_MS + e.perLevelMs * next) / 3_600_000),
+      )
     default: {
       // exhaustive 가드(D-5.1): 새 StardustEffect kind 추가 시 여기서 컴파일 에러가 난다.
       const _exhaustive: never = e
@@ -46,10 +51,11 @@ export default function StardustShopModal({ onClose }: Props) {
   )
 
   return (
-    <Modal title="스타더스트 상점 ✨" onClose={onClose} wide>
+    <Modal title={STRINGS.stardustShop.title} onClose={onClose} wide>
       <p className="modal-sub">
-        보유 스타더스트 <strong className="offline-amount">✨ {formatNumber(stardust)}</strong> · 각성해도
-        유지되는 영구 강화예요.
+        {STRINGS.stardustShop.subLead}{' '}
+        <strong className="offline-amount">✨ {formatNumber(stardust)}</strong>
+        {STRINGS.stardustShop.subTail}
       </p>
       <div className="stardust-cards">
         {STARDUST_UPGRADES.map((def) => {
@@ -77,9 +83,9 @@ export default function StardustShopModal({ onClose }: Props) {
               </span>
               <span className="stardust-card-desc">{def.desc}</span>
               {maxed ? (
-                <span className="stardust-card-next">최대 레벨 달성</span>
+                <span className="stardust-card-next">{STRINGS.stardustShop.maxed}</span>
               ) : (
-                <span className="stardust-card-next">다음: {nextEffectLabel(def, level)}</span>
+                <span className="stardust-card-next">{STRINGS.stardustShop.nextEffect(nextEffectLabel(def, level))}</span>
               )}
               <span className="stardust-card-cost">
                 {maxed ? '—' : `✨ ${formatNumber(cost)}`}
@@ -90,7 +96,7 @@ export default function StardustShopModal({ onClose }: Props) {
       </div>
       <div className="modal-actions">
         <button type="button" className="modal-button modal-button--primary" onClick={onClose}>
-          닫기
+          {STRINGS.common.close}
         </button>
       </div>
     </Modal>

@@ -4,6 +4,7 @@ import { formatNumber } from '../utils/format.ts'
 import { saveNow } from '../engine/autosave.ts'
 import { PRESTIGE_THRESHOLD, STARDUST_MULT_PER } from '../data/config.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
+import { STRINGS } from '../data/strings.ts'
 import SaveModal from './SaveModal.tsx'
 import AchievementsModal from './AchievementsModal.tsx'
 import SettingsModal from './SettingsModal.tsx'
@@ -30,7 +31,7 @@ function HeaderMana() {
       className={`header-mana${dropping ? ' mana-drop' : ''}`}
       onAnimationEnd={() => setDropping(false)}
     >
-      {formatNumber(mana)} 마나
+      {STRINGS.header.mana(formatNumber(mana))}
     </span>
   )
 }
@@ -50,8 +51,8 @@ function MeteorBadge() {
   }, [activeBuff])
   if (!activeBuff || remaining <= 0) return null
   return (
-    <span className="meteor-badge" title="유성 버프 — 생산 폭주 중">
-      ×{activeBuff.mult} (남은 {remaining}초)
+    <span className="meteor-badge" title={STRINGS.header.meteorBadgeTitle}>
+      {STRINGS.header.meteorBadge(activeBuff.mult, remaining)}
     </span>
   )
 }
@@ -84,13 +85,13 @@ export default function Header() {
       <h1 className="header-title">🧪 POTIONWORKS</h1>
       <div className="header-stats">
         <HeaderMana />
-        <span className="header-mps">초당 {mpsText}</span>
+        <span className="header-mps">{STRINGS.header.mps(mpsText)}</span>
         <MeteorBadge />
         {showStardust && (
           <button
             type="button"
             className="header-stardust"
-            title={`전체 생산 +${bonusPercent}% · 클릭하면 스타더스트 상점`}
+            title={STRINGS.header.stardustTitle(bonusPercent)}
             onClick={() => setShowShop(true)}
           >
             ✨ {formatNumber(stardust)}
@@ -99,14 +100,14 @@ export default function Header() {
       </div>
       <div className="header-actions">
         {lastSavedAt !== null && (
-          <span className="header-saved-at">{formatClock(lastSavedAt)} 저장됨</span>
+          <span className="header-saved-at">{STRINGS.header.savedAt(formatClock(lastSavedAt))}</span>
         )}
         <button
           type="button"
           className="header-button"
           onClick={() => setShowStats(true)}
-          aria-label="통계"
-          title="통계"
+          aria-label={STRINGS.header.statsLabel}
+          title={STRINGS.header.statsLabel}
         >
           📊
         </button>
@@ -114,19 +115,19 @@ export default function Header() {
           type="button"
           className="header-button"
           onClick={() => setShowAchievements(true)}
-          title="업적 목록"
+          title={STRINGS.header.achievementsTitle}
         >
           🏆 {achievementCount}/{ACHIEVEMENTS.length}
         </button>
         <button type="button" className="header-button" onClick={() => saveNow()}>
-          저장
+          {STRINGS.header.save}
         </button>
         <button
           type="button"
           className="header-button"
           onClick={() => setShowSettings(true)}
-          aria-label="설정"
-          title="설정"
+          aria-label={STRINGS.header.settingsLabel}
+          title={STRINGS.header.settingsLabel}
         >
           ⚙️
         </button>

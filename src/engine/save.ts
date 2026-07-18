@@ -15,6 +15,7 @@ import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
 import { KNOWN_ACHIEVEMENT_IDS } from '../data/achievements.ts'
 import { STARDUST_UPGRADES, stardustUpgradeById } from '../data/stardustShop.ts'
+import { STRINGS } from '../data/strings.ts'
 import type { BuyAmount } from '../store/gameStore.ts'
 
 // 세이브 스키마 버전. 필드 구조를 바꾸면 올리고 migrate에 단계 추가.
@@ -138,7 +139,7 @@ export function deserialize(str: string): SaveData | null {
   try {
     parsed = JSON.parse(str)
   } catch {
-    console.warn('[save] JSON 파싱 실패 — 세이브를 무시합니다.')
+    console.warn(STRINGS.log.save.jsonParseFailed)
     return null
   }
   return migrate(parsed)
@@ -222,23 +223,23 @@ function normalizeAchievements(v: unknown): string[] {
 // v5→v6: deviceId는 현재 기기값(getDeviceId), saveCount=0으로 초기화한다(단조 카운터 출발점).
 export function migrate(raw: unknown): SaveData | null {
   if (!isRecord(raw)) {
-    console.warn('[save] 세이브가 객체가 아닙니다 — 무시합니다.')
+    console.warn(STRINGS.log.save.notObject)
     return null
   }
   if (typeof raw.version !== 'number') {
-    console.warn('[save] version 필드가 없습니다 — 무시합니다.')
+    console.warn(STRINGS.log.save.noVersion)
     return null
   }
   if (raw.version > SAVE_VERSION) {
-    console.warn(`[save] 알 수 없는 세이브 버전(${raw.version}) — 무시합니다.`)
+    console.warn(STRINGS.log.save.unknownVersion(raw.version))
     return null
   }
   if (typeof raw.savedAt !== 'number' || !Number.isFinite(raw.savedAt)) {
-    console.warn('[save] savedAt이 유효하지 않습니다 — 무시합니다.')
+    console.warn(STRINGS.log.save.invalidSavedAt)
     return null
   }
   if (!isRecord(raw.state)) {
-    console.warn('[save] state가 없습니다 — 무시합니다.')
+    console.warn(STRINGS.log.save.noState)
     return null
   }
   const s = raw.state
@@ -339,14 +340,14 @@ function hasFiniteNumbers(state: SaveState): boolean {
 // 호출부(autosave.saveNow)가 이 값으로 "저장됨" 시각 갱신 또는 저장 실패 배너를 띄운다.
 export function saveToLocal(state: SaveState, now?: number): boolean {
   if (!hasFiniteNumbers(state)) {
-    console.warn('[save] 상태에 비유한 수치가 있어 저장을 건너뜁니다(마지막 정상 세이브 보호).')
+    console.warn(STRINGS.log.save.nonFiniteSkip)
     return false
   }
   try {
     localStorage.setItem(SAVE_KEY, serialize(state, now))
     return true
   } catch {
-    console.warn('[save] localStorage 저장 실패(용량/권한).')
+    console.warn(STRINGS.log.save.saveFailed)
     return false
   }
 }
@@ -363,7 +364,7 @@ function preserveCorrupt(raw: string): void {
   try {
     localStorage.setItem(SAVE_CORRUPT_KEY, raw)
   } catch {
-    console.warn('[save] 손상 세이브 백업 실패(용량/권한).')
+    console.warn(STRINGS.log.save.corruptBackupFailed)
   }
 }
 
@@ -372,7 +373,7 @@ export function loadFromLocalResult(): LoadResult {
   try {
     raw = localStorage.getItem(SAVE_KEY)
   } catch {
-    console.warn('[save] localStorage 접근 실패.')
+    console.warn(STRINGS.log.save.accessFailed)
     return { status: 'empty' }
   }
   if (raw === null) return { status: 'empty' }
@@ -394,7 +395,7 @@ export function clearSave(): void {
   try {
     localStorage.removeItem(SAVE_KEY)
   } catch {
-    console.warn('[save] localStorage 삭제 실패.')
+    console.warn(STRINGS.log.save.removeFailed)
   }
 }
 
@@ -423,7 +424,7 @@ export function importSave(str: string): SaveData | null {
   try {
     json = fromBase64(str.trim())
   } catch {
-    console.warn('[save] Base64 디코드 실패 — 잘못된 백업 문자열.')
+    console.warn(STRINGS.log.save.base64Failed)
     return null
   }
   return deserialize(json)

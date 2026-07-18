@@ -9,6 +9,7 @@ import {
 } from '../data/config.ts'
 import { formatNumber } from '../utils/format.ts'
 import { saveNow } from '../engine/autosave.ts'
+import { STRINGS } from '../data/strings.ts'
 import Modal from './Modal.tsx'
 import StardustShopModal from './StardustShopModal.tsx'
 
@@ -27,7 +28,7 @@ function bonusPercent(stardust: number): number {
 }
 
 // 게이지 툴팁(사전 설명, U7·U1). 각성 임계값은 config에서 파생 포맷.
-const HINT_TOOLTIP = `누적 ${formatNumber(PRESTIGE_THRESHOLD)} 도달 시 각성 — 초기화 대신 영구 생산 보너스를 얻어요`
+const HINT_TOOLTIP = STRINGS.prestige.hintTooltip(formatNumber(PRESTIGE_THRESHOLD))
 
 export default function PrestigeModal() {
   // 진행도 표시용: 정수 내림 후 포맷한 문자열만 구독(소수점 변화로 리렌더되지 않도록).
@@ -73,23 +74,23 @@ export default function PrestigeModal() {
       {canPrestige ? (
         <>
           <button type="button" className="prestige-button" onClick={() => setShowConfirm(true)}>
-            ✨ 각성 (+{formatNumber(gain)} 스타더스트)
+            {STRINGS.prestige.awakenButton(formatNumber(gain))}
           </button>
           <div className="prestige-next">
-            누적 {progressText} · 다음 ✨+1까지 {nextAtText}
+            {STRINGS.prestige.nextLine(progressText, nextAtText)}
           </div>
         </>
       ) : (
         showHint && (
           <div className="prestige-progress" title={HINT_TOOLTIP}>
-            <span className="prestige-progress-label">각성까지 누적 마나</span>
+            <span className="prestige-progress-label">{STRINGS.prestige.progressLabel}</span>
             <div className="prestige-progress-bar">
               <div className="prestige-progress-fill" style={{ width: `${pct}%` }} />
             </div>
             <span className="prestige-progress-value">
               {progressText} / {formatNumber(PRESTIGE_THRESHOLD)}
             </span>
-            <span className="prestige-next">다음 ✨+1까지 {nextAtText}</span>
+            <span className="prestige-next">{STRINGS.prestige.nextShort(nextAtText)}</span>
           </div>
         )
       )}
@@ -97,13 +98,13 @@ export default function PrestigeModal() {
       <div className="prestige-tools">
         {showShopEntry && (
           <button type="button" className="prestige-shop-button" onClick={() => setShowShop(true)}>
-            ✨ 상점
+            {STRINGS.prestige.shopButton}
           </button>
         )}
         <button
           type="button"
           className="prestige-info"
-          aria-label="각성이란?"
+          aria-label={STRINGS.prestige.infoAria}
           aria-expanded={showInfo}
           onClick={() => setShowInfo((v) => !v)}
         >
@@ -112,35 +113,39 @@ export default function PrestigeModal() {
       </div>
       {showInfo && (
         <div className="prestige-info-pop" role="note">
-          <p>각성하면 마나·시설·업그레이드가 초기화되지만, 이번 생 누적 마나에 비례한 스타더스트를 영구히 얻어요.</p>
-          <p>스타더스트는 전체 생산을 +{bonusPercent(1)}%씩 올리고, 상점에서 시작 부스트·오프라인 강화에도 쓸 수 있어요.</p>
+          <p>{STRINGS.prestige.infoBody1}</p>
+          <p>{STRINGS.prestige.infoBody2(bonusPercent(1))}</p>
         </div>
       )}
 
       {showConfirm && canPrestige && (
-        <Modal title="각성하시겠어요? ✨" onClose={() => setShowConfirm(false)}>
+        <Modal title={STRINGS.prestige.confirmTitle} onClose={() => setShowConfirm(false)}>
           <p className="modal-body">
-            지금 각성하면{' '}
-            <strong className="offline-amount">✨+{formatNumber(gain)} 스타더스트</strong>
-            {isFirstPrestige && ` (첫 각성 보너스 +${FIRST_PRESTIGE_BONUS} 포함)`}
+            {STRINGS.prestige.confirmLead}{' '}
+            <strong className="offline-amount">{STRINGS.prestige.confirmGain(formatNumber(gain))}</strong>
+            {isFirstPrestige && STRINGS.prestige.firstBonus(FIRST_PRESTIGE_BONUS)}
           </p>
           <p className="modal-body">
-            ✨ {formatNumber(stardust)} → {formatNumber(after)} (생산 +{bonusPercent(stardust)}% → +
-            {bonusPercent(after)}%)
+            {STRINGS.prestige.confirmDelta(
+              formatNumber(stardust),
+              formatNumber(after),
+              bonusPercent(stardust),
+              bonusPercent(after),
+            )}
           </p>
           <p className="modal-sub">
-            각성 후: 마나 · 시설 · 업그레이드 초기화 / 스타더스트 · 상점 · 통계 유지
+            {STRINGS.prestige.confirmKeep}
           </p>
           <div className="modal-actions">
             <button type="button" className="modal-button" onClick={() => setShowConfirm(false)}>
-              취소
+              {STRINGS.common.cancel}
             </button>
             <button
               type="button"
               className="modal-button modal-button--primary"
               onClick={handlePrestige}
             >
-              각성
+              {STRINGS.prestige.confirmOk}
             </button>
           </div>
         </Modal>

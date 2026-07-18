@@ -13,6 +13,7 @@ import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES, resolveUpgrades } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
 import { stardustUpgradeById } from '../data/stardustShop.ts'
+import { STRINGS } from '../data/strings.ts'
 import {
   bulkCost,
   totalMps,
@@ -609,8 +610,8 @@ export const useGameStore = create<GameState>()((set) => ({
             id: nextToastId++,
             name: '',
             icon: '☄️',
-            title: '마나 폭주!',
-            sub: `${METEOR_BUFF_DURATION_MS / 1000}초간 생산 ×${METEOR_BUFF_MULT}`,
+            title: STRINGS.toast.meteorTitle,
+            sub: STRINGS.toast.meteorSub(METEOR_BUFF_DURATION_MS / 1000, METEOR_BUFF_MULT),
           },
         ],
         burstKey: s.burstKey + 1, // 화려한 획득 이펙트(파티클 버스트) 트리거

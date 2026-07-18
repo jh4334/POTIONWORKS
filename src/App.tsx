@@ -14,6 +14,7 @@ import { startTickLoop } from './engine/tick.ts'
 import { startAutosave, hadSaveOnLoad } from './engine/autosave.ts'
 import { useGameStore } from './store/gameStore.ts'
 import { setMuted } from './engine/sound.ts'
+import { STRINGS } from './data/strings.ts'
 
 export default function App() {
   // 게임 루프 + 자동저장 시작. cleanup으로 StrictMode 이중 mount에도 인터벌이 중복 생성되지 않는다.
@@ -42,13 +43,13 @@ export default function App() {
       {loadFailed && (
         <div className="load-failed-banner" role="alert">
           <span className="load-failed-text">
-            저장 데이터를 읽지 못했습니다. 원본은 안전하게 백업해 두었어요(초기화되지 않음).
+            {STRINGS.banner.loadFailed}
           </span>
           <button
             type="button"
             className="load-failed-close"
             onClick={dismissLoadFailed}
-            aria-label="닫기"
+            aria-label={STRINGS.common.close}
           >
             ✕
           </button>
@@ -57,13 +58,13 @@ export default function App() {
       {saveFailed && (
         <div className="load-failed-banner" role="alert">
           <span className="load-failed-text">
-            저장이 되지 않고 있어요 — 브라우저 저장공간을 확인하세요.
+            {STRINGS.banner.saveFailed}
           </span>
           <button
             type="button"
             className="load-failed-close"
             onClick={dismissSaveFailed}
-            aria-label="닫기"
+            aria-label={STRINGS.common.close}
           >
             ✕
           </button>

@@ -1,6 +1,7 @@
 // 업그레이드 정의 (DESIGN.md §2.4). 규칙(CLAUDE.md): 게임 수치는 전부 data/*.
 // 효과는 데이터 기술식(discriminated union) — 해석은 engine/formulas.ts 순수 함수가 담당한다.
 import { GENERATORS, type GeneratorId } from './generators.ts'
+import { STRINGS } from './strings.ts'
 
 // 효과: 마일스톤 배율 / 클릭 강화 / 시너지.
 // 시설 참조 필드는 GeneratorId로 좁혀 존재하지 않는 id를 컴파일 단계에서 잡는다(D-5.1).
@@ -42,8 +43,8 @@ const MILESTONE_MULT = 2
 const MILESTONE_UPGRADES: UpgradeDef[] = GENERATORS.flatMap((g) =>
   MILESTONE_STAGES.map((stage) => ({
     id: `${g.id}-x2-${stage.minOwned}`,
-    name: `${g.name} 숙련 ${stage.minOwned}`,
-    desc: `${g.name} 생산 ×${MILESTONE_MULT}`,
+    name: STRINGS.upgrade.milestoneName(g.name, stage.minOwned),
+    desc: STRINGS.upgrade.milestoneDesc(g.name, MILESTONE_MULT),
     cost: Math.ceil(g.baseCost * stage.costMult),
     unlock: { kind: 'ownedCount', generatorId: g.id, minOwned: stage.minOwned },
     effect: { kind: 'generatorMult', generatorId: g.id, mult: MILESTONE_MULT },

@@ -7,6 +7,7 @@
 //   새로운 상태 변형 로직을 두지 않는다. addMana만 전용 액션(debugAddMana)을 사용한다.
 import { useGameStore } from '../store/gameStore.ts'
 import { hardResetAndReload } from '../engine/autosave.ts'
+import { STRINGS } from '../data/strings.ts'
 
 interface Cheats {
   // 마나 +n (누적 마나 통계도 함께). 각성 도달 등 상태 진행에 사용.
@@ -52,6 +53,4 @@ declare global {
 }
 
 window.cheats = cheats
-console.info(
-  '[cheats] window.cheats 활성화 — addMana(n) · x1000() · simulate(hours) · meteor() · reset()',
-)
+console.info(STRINGS.log.cheats.enabled)
