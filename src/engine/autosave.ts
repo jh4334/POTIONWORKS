@@ -1,7 +1,7 @@
 // 자동저장 루프 + 앱 시작 로드/오프라인 수익 오케스트레이션.
 // 순수 계산은 offline.ts, 직렬화는 save.ts, 상태 변형은 스토어 액션 — 여기선 그걸 엮기만 한다.
 import { useGameStore } from '../store/gameStore.ts'
-import { saveToLocal, loadFromLocalResult } from './save.ts'
+import { saveToLocal, loadFromLocalResult, migrateLegacySlot } from './save.ts'
 import { offlineEarnings } from './offline.ts'
 import { effectiveOfflineEfficiency, effectiveOfflineCapMs } from './formulas.ts'
 import { AUTOSAVE_INTERVAL_MS, OFFLINE_MIN_MS, SAVE_DEBOUNCE_MS } from '../data/config.ts'
@@ -43,6 +43,9 @@ export function saveNow(now: number = Date.now()): boolean {
 // 앱 시작 시 1회: 세이브 로드 → 오프라인 수익 지급.
 // StrictMode 밖(main.tsx 모듈 로드 시점)에서 호출해 이중 실행을 피한다.
 export function loadGame(): void {
+  // 최초 1회: 기존 단일 세이브(potionworks-save)를 슬롯 1로 무손실 이전한다(E-3.2). 이후엔 no-op.
+  // 로드보다 먼저 실행해야 activeSlot 기반 로드가 이전된 슬롯 1을 읽는다.
+  migrateLegacySlot()
   const result = loadFromLocalResult()
 
   // 로드 실패(deserialize/migrate 실패): 원본은 save.ts에서 손상 백업 키에 이미 보존됨.
@@ -73,6 +76,8 @@ export function loadGame(): void {
     const amount = offlineEarnings(elapsedMs, mps, efficiency, capMs)
     const cappedMs = Math.min(elapsedMs, capMs)
     if (amount > 0) useGameStore.getState().applyOfflineEarnings(amount, now, elapsedMs, cappedMs)
+    // 오프라인 자동화(E-2.1 공방 관리인): 정산으로 쌓인 마나로 업그레이드·시설을 자동 구매(레벨 0이면 무동작).
+    useGameStore.getState().applyOfflineAutomation()
   } else if (elapsedMs > 0 && mps > 0) {
     // 60초 미만 부재(D-1.5): 팝업 없이 100%를 조용히 지급. lastTick=now로 이중 지급 없음.
     useGameStore.getState().applySilentEarnings(mps * (elapsedMs / 1000), now)

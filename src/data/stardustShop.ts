@@ -1,10 +1,19 @@
-// 스타더스트 상점 정의 (D-3 각성 리워크). 규칙(CLAUDE.md): 게임 수치는 전부 data/*.
+// 스타더스트 상점 정의 (D-3 각성 리워크 · E-2.1 2단 확장). 규칙(CLAUDE.md): 게임 수치는 전부 data/*.
 // 각성 화폐(스타더스트)의 소비처 — 각성해도 유지되는 영구 강화 트랙.
 // 효과는 데이터 기술식(discriminated union) — 해석은 engine/formulas.ts 순수 함수가 담당한다.
+import { GENERATORS, type GeneratorId } from './generators.ts'
+import { STRINGS } from './strings.ts'
 
 // 레벨별 비용 성장 상수. 비용 = baseCost × STARDUST_COST_GROWTH^level (level=현재 보유 레벨).
 // 코드 매직넘버 금지 규칙에 따라 기울기 상수를 데이터에 둔다.
 export const STARDUST_COST_GROWTH = 2
+
+// 생산 트리(별의 축복) 공통 상수: 티어당 생산 ×BLESSING_MULT/Lv(곱), 최대 레벨.
+// 파생 생성이라 수치를 코드가 아닌 데이터 상수로 둔다(매직넘버 금지).
+const BLESSING_MULT = 1.5
+const BLESSING_MAX_LEVEL = 3
+// 티어 순서대로의 baseCost(T1~T8). 곡선은 STARDUST_COST_GROWTH^Lv로 동일.
+const BLESSING_BASE_COSTS = [2, 3, 4, 6, 8, 12, 20, 30]
 
 // 상점 강화 효과.
 export type StardustEffect =
@@ -16,6 +25,15 @@ export type StardustEffect =
   | { kind: 'offlineEfficiency'; perLevel: number }
   // 오프라인 캡 +(perLevelMs × 레벨) — 기본 8h에서 최대 12h까지(방치 성장축, U3).
   | { kind: 'offlineCap'; perLevelMs: number }
+  // 특정 티어(generatorId) 생산 ×(mult^레벨) — 생산 트리(E-2.1). 시설 참조는 GeneratorId로 좁혀
+  //   컴파일·무결성 테스트가 오타를 잡는다(upgrades.ts generatorMult와 동일 관례).
+  | { kind: 'generatorMult'; generatorId: GeneratorId; mult: number }
+  // 오프라인 자동화(공방 관리인, E-2.1). 레벨 단계로 오프라인 정산 시 자동 구매 범위가 넓어진다 —
+  //   Lv1 마일스톤·시설 배율 업그레이드, Lv2 +클릭·시너지, Lv3 +시설 그리디. 수치 인자 없음(레벨=단계).
+  | { kind: 'automation' }
+
+// 상점 섹션(UI 구분). 기본(D-3) · 생산 트리 · 자동화.
+export type StardustGroup = 'basic' | 'production' | 'automation'
 
 export interface StardustUpgradeDef {
   id: string
@@ -24,10 +42,12 @@ export interface StardustUpgradeDef {
   icon: string // 표시용 이모지
   baseCost: number // 레벨 0→1 비용(정수). 레벨별 비용은 baseCost × 2^level.
   maxLevel: number | null // null이면 무한 레벨. 숫자면 그 레벨에서 구매 종료.
+  group: StardustGroup
   effect: StardustEffect
 }
 
-export const STARDUST_UPGRADES: StardustUpgradeDef[] = [
+// D-3 기본 4종.
+const BASIC_UPGRADES: StardustUpgradeDef[] = [
   {
     id: 'starting-apprentices',
     name: '견습 마법사단',
@@ -35,6 +55,7 @@ export const STARDUST_UPGRADES: StardustUpgradeDef[] = [
     icon: '🧙',
     baseCost: 1,
     maxLevel: null,
+    group: 'basic',
     effect: { kind: 'startingApprentices', perLevel: 5 },
   },
   {
@@ -44,6 +65,7 @@ export const STARDUST_UPGRADES: StardustUpgradeDef[] = [
     icon: '💥',
     baseCost: 2,
     maxLevel: null,
+    group: 'basic',
     effect: { kind: 'clickMpsPercent', perLevel: 1 },
   },
   {
@@ -53,6 +75,7 @@ export const STARDUST_UPGRADES: StardustUpgradeDef[] = [
     icon: '🌙',
     baseCost: 3,
     maxLevel: 5,
+    group: 'basic',
     effect: { kind: 'offlineEfficiency', perLevel: 0.05 },
   },
   {
@@ -62,8 +85,42 @@ export const STARDUST_UPGRADES: StardustUpgradeDef[] = [
     icon: '⏳',
     baseCost: 5,
     maxLevel: 4,
+    group: 'basic',
     effect: { kind: 'offlineCap', perLevelMs: 60 * 60 * 1000 },
   },
+]
+
+// 생산 트리(E-2.1): 티어별 "별의 축복: {티어명}" 8종. GENERATORS(티어 순서)에서 파생 생성 —
+// 이름/설명은 파라미터화(i18n 대비), 시설 참조는 GeneratorId로 좁혀 무결성 테스트가 자동 검증한다.
+const BLESSING_UPGRADES: StardustUpgradeDef[] = GENERATORS.map((g, i) => ({
+  id: `blessing-${g.id}`,
+  name: STRINGS.stardustShop.blessingName(g.name),
+  desc: STRINGS.stardustShop.blessingDesc(g.name, BLESSING_MULT),
+  icon: g.icon,
+  baseCost: BLESSING_BASE_COSTS[i],
+  maxLevel: BLESSING_MAX_LEVEL,
+  group: 'production',
+  effect: { kind: 'generatorMult', generatorId: g.id, mult: BLESSING_MULT },
+}))
+
+// 자동화(E-2.1): 공방 관리인 1종. 비용 10/20/40(baseCost 10 × 2^Lv), maxLevel 3.
+const AUTOMATION_UPGRADES: StardustUpgradeDef[] = [
+  {
+    id: 'workshop-manager',
+    name: '공방 관리인',
+    desc: '오프라인 정산 시 업그레이드·시설을 자동 구매 (Lv1 배율 업그레이드 · Lv2 +클릭/시너지 · Lv3 +시설)',
+    icon: '🧑‍🔧',
+    baseCost: 10,
+    maxLevel: 3,
+    group: 'automation',
+    effect: { kind: 'automation' },
+  },
+]
+
+export const STARDUST_UPGRADES: StardustUpgradeDef[] = [
+  ...BASIC_UPGRADES,
+  ...BLESSING_UPGRADES,
+  ...AUTOMATION_UPGRADES,
 ]
 
 // id → 정의 조회용(스토어·세이브가 레벨 맵을 정의로 해석할 때 사용).

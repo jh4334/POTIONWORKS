@@ -22,8 +22,18 @@ import {
   nextStardustAt,
   prestigeGain,
   composeGlobalMult,
+  challengeMultiplier,
+  stardustGeneratorMult,
+  automationLevel,
+  potionCost,
+  isPotionUnlocked,
+  isBrewReady,
+  remainingBrewMs,
+  productionBuffBonus,
   type AchievementStats,
 } from './formulas.ts'
+import { CHALLENGES } from '../data/challenges.ts'
+import { POTIONS, type PotionDef } from '../data/potions.ts'
 import { COST_GROWTH, GENERATORS, type GeneratorDef, type GeneratorId } from '../data/generators.ts'
 import type { UpgradeDef } from '../data/upgrades.ts'
 import type { AchievementDef } from '../data/achievements.ts'
@@ -280,16 +290,36 @@ describe('achievementCurrent', () => {
     totalLifetimeMana: 12345,
     totalPrestiges: 3,
     mps: 99,
+    stardust: 11,
+    playtimeMs: 3600000,
+    meteorsClicked: 8,
+    prestigeCancels: 2,
+    mutedPlaytimeMs: 120000,
+    clickCombo: 55,
+    dragonVisits: 1,
   }
 
   it('조건 종류별 현재값을 통계에서 파생', () => {
     expect(achievementCurrent(ach({ kind: 'clicks', min: 100 }), stats)).toBe(42)
     expect(
-      achievementCurrent(ach({ kind: 'generatorCount', generatorId: 'apprentice', min: 50 }), stats),
+      achievementCurrent(
+        ach({ kind: 'generatorCount', generatorId: 'apprentice', min: 50 }),
+        stats,
+      ),
     ).toBe(7)
     expect(achievementCurrent(ach({ kind: 'lifetimeMana', min: 1e6 }), stats)).toBe(12345)
     expect(achievementCurrent(ach({ kind: 'prestiges', min: 5 }), stats)).toBe(3)
     expect(achievementCurrent(ach({ kind: 'mps', min: 100 }), stats)).toBe(99)
+  })
+
+  it('E-1.3 신규 조건 종류별 현재값을 통계에서 파생', () => {
+    expect(achievementCurrent(ach({ kind: 'stardust', min: 25 }), stats)).toBe(11)
+    expect(achievementCurrent(ach({ kind: 'playtime', min: 1 }), stats)).toBe(3600000)
+    expect(achievementCurrent(ach({ kind: 'meteorsClicked', min: 5 }), stats)).toBe(8)
+    expect(achievementCurrent(ach({ kind: 'prestigeCancels', min: 3 }), stats)).toBe(2)
+    expect(achievementCurrent(ach({ kind: 'mutedPlaytime', min: 1 }), stats)).toBe(120000)
+    expect(achievementCurrent(ach({ kind: 'clickCombo', min: 100 }), stats)).toBe(55)
+    expect(achievementCurrent(ach({ kind: 'dragonVisits', min: 1 }), stats)).toBe(1)
   })
 
   it('보유하지 않은 시설은 0', () => {
@@ -341,7 +371,9 @@ describe('achievementMultiplier', () => {
   })
 
   it('전체 배율은 스타더스트×업적 합성 — totalMps에 한 번만 곱한다', () => {
-    const gens: GeneratorDef[] = [{ id: 'a', tier: 1, name: 'A', icon: '', baseCost: 15, baseMps: 1 }]
+    const gens: GeneratorDef[] = [
+      { id: 'a', tier: 1, name: 'A', icon: '', baseCost: 15, baseMps: 1 },
+    ]
     const base = 10 // a 10개 × 1
     const globalMult = stardustMultiplier(5) * achievementMultiplier(10) // 1.5 × 1.1 = 1.65
     expect(totalMps({ a: 10 }, gens, [], globalMult)).toBeCloseTo(base * 1.65)
@@ -413,6 +445,62 @@ describe('startingApprentices', () => {
   it('견습 마법사단 레벨 × 5', () => {
     expect(startingApprentices({})).toBe(0)
     expect(startingApprentices({ 'starting-apprentices': 4 })).toBe(20)
+  })
+})
+
+describe('stardustGeneratorMult (E-2.1 생산 트리)', () => {
+  it('레벨 0/없음이면 1', () => {
+    expect(stardustGeneratorMult('apprentice', {})).toBeCloseTo(1)
+    expect(stardustGeneratorMult('apprentice', { 'blessing-apprentice': 0 })).toBeCloseTo(1)
+  })
+
+  it('별의 축복 레벨만큼 ×1.5^Lv (해당 티어에만)', () => {
+    expect(stardustGeneratorMult('apprentice', { 'blessing-apprentice': 1 })).toBeCloseTo(1.5)
+    expect(stardustGeneratorMult('apprentice', { 'blessing-apprentice': 2 })).toBeCloseTo(2.25)
+    // 다른 티어 축복은 무관.
+    expect(stardustGeneratorMult('cauldron', { 'blessing-apprentice': 3 })).toBeCloseTo(1)
+  })
+
+  it('maxLevel(3) 초과 레벨(손상)은 클램프', () => {
+    expect(stardustGeneratorMult('apprentice', { 'blessing-apprentice': 99 })).toBeCloseTo(1.5 ** 3)
+  })
+
+  it('generatorMultiplier에 stardustLevels를 넘기면 업그레이드 배율과 곱해진다', () => {
+    // ×2 마일스톤 × 별의 축복 ×1.5 = 3.
+    expect(
+      generatorMultiplier('apprentice', [mult2('apprentice')], {}, { 'blessing-apprentice': 1 }),
+    ).toBeCloseTo(3)
+  })
+})
+
+describe('automationLevel (E-2.1 공방 관리인)', () => {
+  it('없으면 0, 레벨을 그대로(내림)', () => {
+    expect(automationLevel({})).toBe(0)
+    expect(automationLevel({ 'workshop-manager': 2 })).toBe(2)
+  })
+  it('maxLevel(3) 초과는 클램프', () => {
+    expect(automationLevel({ 'workshop-manager': 99 })).toBe(3)
+  })
+})
+
+describe('challengeMultiplier (E-2.2)', () => {
+  it('완료 없으면 1', () => {
+    expect(challengeMultiplier([], CHALLENGES)).toBeCloseTo(1)
+  })
+  it('완료 보상 합을 1에 더한다', () => {
+    expect(challengeMultiplier(['silent-hands'], CHALLENGES)).toBeCloseTo(1.25)
+    expect(challengeMultiplier(['silent-hands', 'ascetic'], CHALLENGES)).toBeCloseTo(1.5)
+    // silent-hands(+25%) + time-trial(+50%) = +75%.
+    expect(challengeMultiplier(['silent-hands', 'time-trial'], CHALLENGES)).toBeCloseTo(1.75)
+  })
+  it('미지 id는 무시', () => {
+    expect(challengeMultiplier(['no-such', 'silent-hands'], CHALLENGES)).toBeCloseTo(1.25)
+  })
+  it('composeGlobalMult에 challengeMult로 합류', () => {
+    // stardust 5 → 1.5, 업적 0 → 1, 버프 없음, 챌린지 ×1.5.
+    expect(composeGlobalMult({ stardust: 5, achievementCount: 0, challengeMult: 1.5 })).toBeCloseTo(
+      1.5 * 1.5,
+    )
   })
 })
 
@@ -500,6 +588,15 @@ describe('clickPower', () => {
     // 1 + 1000 * 2/100 = 1 + 20 = 21
     expect(clickPower(1, 1000, [clickPercent(1), clickPercent(1)])).toBeCloseTo(21)
   })
+
+  it('클릭 버프 배율(E-1.4 마나 폭풍)은 최종 클릭 파워에 곱해진다', () => {
+    // 미지정=1(기존과 동일)
+    expect(clickPower(1, 1000, [clickPercent(1)])).toBeCloseTo(11)
+    // ×10: (1 + 1000*1%) * 10 = 110
+    expect(clickPower(1, 1000, [clickPercent(1)], 0, 10)).toBeCloseTo(110)
+    // 업그레이드 없어도 base에 곱: 5 * 10 = 50
+    expect(clickPower(5, 0, [], 0, 10)).toBeCloseTo(50)
+  })
 })
 
 describe('isUpgradeUnlocked', () => {
@@ -526,6 +623,13 @@ describe('isAchievementUnlocked', () => {
     totalLifetimeMana: 0,
     totalPrestiges: 0,
     mps: 0,
+    stardust: 0,
+    playtimeMs: 0,
+    meteorsClicked: 0,
+    prestigeCancels: 0,
+    mutedPlaytimeMs: 0,
+    clickCombo: 0,
+    dragonVisits: 0,
   }
 
   it('clicks: 총 클릭 수 경계', () => {
@@ -558,6 +662,69 @@ describe('isAchievementUnlocked', () => {
     const def = ach({ kind: 'mps', min: 100 })
     expect(isAchievementUnlocked(def, { ...base, mps: 99.9 })).toBe(false)
     expect(isAchievementUnlocked(def, { ...base, mps: 100 })).toBe(true)
+  })
+
+  it('E-1.3 신규 조건: stardust/playtime/meteorsClicked/prestigeCancels/mutedPlaytime/clickCombo/dragonVisits 경계', () => {
+    expect(
+      isAchievementUnlocked(ach({ kind: 'stardust', min: 25 }), { ...base, stardust: 24 }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'stardust', min: 25 }), { ...base, stardust: 25 }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'playtime', min: 1000 }), { ...base, playtimeMs: 999 }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'playtime', min: 1000 }), { ...base, playtimeMs: 1000 }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'meteorsClicked', min: 5 }), {
+        ...base,
+        meteorsClicked: 4,
+      }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'meteorsClicked', min: 5 }), {
+        ...base,
+        meteorsClicked: 5,
+      }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'prestigeCancels', min: 3 }), {
+        ...base,
+        prestigeCancels: 2,
+      }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'prestigeCancels', min: 3 }), {
+        ...base,
+        prestigeCancels: 3,
+      }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'mutedPlaytime', min: 3600000 }), {
+        ...base,
+        mutedPlaytimeMs: 3599999,
+      }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'mutedPlaytime', min: 3600000 }), {
+        ...base,
+        mutedPlaytimeMs: 3600000,
+      }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'clickCombo', min: 100 }), { ...base, clickCombo: 99 }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'clickCombo', min: 100 }), { ...base, clickCombo: 100 }),
+    ).toBe(true)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'dragonVisits', min: 1 }), { ...base, dragonVisits: 0 }),
+    ).toBe(false)
+    expect(
+      isAchievementUnlocked(ach({ kind: 'dragonVisits', min: 1 }), { ...base, dragonVisits: 1 }),
+    ).toBe(true)
   })
 })
 
@@ -658,5 +825,115 @@ describe('비용 곡선 property fuzz (D-5.5)', () => {
         expect(Math.abs(split - whole)).toBeLessThanOrEqual(tolerance)
       }
     }
+  })
+})
+
+// --- E-1.2 포션 조제 ---
+const POTION = (id: string): PotionDef => POTIONS.find((p) => p.id === id)!
+
+describe('potionCost (E-1.2)', () => {
+  it('비용 = 현재 MPS × costMpsSeconds (하한 위에서)', () => {
+    const def = POTION('vitality') // costMpsSeconds 120, floor 1000
+    // MPS 100 → 100×120 = 12,000 (하한 1000보다 큼)
+    expect(potionCost(def, 100)).toBe(12_000)
+  })
+
+  it('MPS가 낮아 비용이 하한 미만이면 하한을 쓴다', () => {
+    const def = POTION('vitality') // floor 1000
+    expect(potionCost(def, 0)).toBe(1_000) // MPS 0 → 하한
+    expect(potionCost(def, 1)).toBe(1_000) // 1×120=120 < 1000 → 하한
+    expect(potionCost(def, 10)).toBe(1_200) // 10×120=1200 > 1000 → 그대로
+  })
+
+  it('비유한/음수 MPS는 MPS분 0으로 보고 하한만 적용', () => {
+    const def = POTION('sageTouch') // floor 100_000
+    expect(potionCost(def, NaN)).toBe(100_000)
+    expect(potionCost(def, Infinity)).toBe(100_000)
+    expect(potionCost(def, -50)).toBe(100_000)
+  })
+
+  it('MPS분은 올림(ceil) 정수', () => {
+    const def = POTION('vitality') // 120초, floor 1000
+    // MPS 8.34 → 8.34×120 = 1000.8 → ceil 1001
+    expect(potionCost(def, 8.34)).toBe(1_001)
+  })
+})
+
+describe('isPotionUnlocked (E-1.2)', () => {
+  it('전생 포함 총 누적 마나가 임계 이상이면 해금', () => {
+    const def = POTION('vitality') // 100K
+    expect(isPotionUnlocked(def, 99_999)).toBe(false)
+    expect(isPotionUnlocked(def, 100_000)).toBe(true)
+    expect(isPotionUnlocked(def, 5_000_000)).toBe(true)
+  })
+
+  it('세 포션의 임계가 오름차순(100K < 10M < 1B)', () => {
+    const vit = POTION('vitality')
+    const sage = POTION('sageTouch')
+    const warp = POTION('timeWarp')
+    expect(vit.unlockTotalMana).toBeLessThan(sage.unlockTotalMana)
+    expect(sage.unlockTotalMana).toBeLessThan(warp.unlockTotalMana)
+  })
+})
+
+describe('isBrewReady / remainingBrewMs (E-1.2)', () => {
+  it('brewing이 null이면 완성 아님·남은 시간 0', () => {
+    expect(isBrewReady(null, 1000)).toBe(false)
+    expect(remainingBrewMs(null, 1000)).toBe(0)
+  })
+
+  it('now >= readyAt이면 완성', () => {
+    expect(isBrewReady({ readyAt: 1000 }, 999)).toBe(false)
+    expect(isBrewReady({ readyAt: 1000 }, 1000)).toBe(true)
+    expect(isBrewReady({ readyAt: 1000 }, 1500)).toBe(true)
+  })
+
+  it('남은 시간 = max(0, readyAt − now)', () => {
+    expect(remainingBrewMs({ readyAt: 5000 }, 2000)).toBe(3000)
+    expect(remainingBrewMs({ readyAt: 5000 }, 5000)).toBe(0)
+    expect(remainingBrewMs({ readyAt: 5000 }, 9000)).toBe(0) // 음수 안 됨
+  })
+})
+
+describe('productionBuffBonus (E-1.2 다중 생산 버프 정산)', () => {
+  it('버프 없으면 0', () => {
+    expect(productionBuffBonus(100, 0, 10_000, [])).toBe(0)
+  })
+
+  it('단일 버프: baseMps × (mult−1) × 겹친초 (구간 전체 겹침)', () => {
+    // baseMps 10, ×7 버프가 [0, 30s] 전체를 덮는 [0, 30s] 구간 → 10×6×30 = 1800
+    const bonus = productionBuffBonus(10, 0, 30_000, [{ startsAt: 0, endsAt: 30_000, mult: 7 }])
+    expect(bonus).toBeCloseTo(10 * 6 * 30, 6)
+  })
+
+  it('단일 버프: 창이 구간 일부만 덮으면 겹친 만큼만', () => {
+    // 버프 [0,10s], 구간 [0,30s] → 겹침 10s → 10×6×10 = 600
+    const bonus = productionBuffBonus(10, 0, 30_000, [{ startsAt: 0, endsAt: 10_000, mult: 7 }])
+    expect(bonus).toBeCloseTo(10 * 6 * 10, 6)
+  })
+
+  it('두 생산 버프 공존: 겹치는 구간은 곱(×14)으로 정산 — 교차항 포함', () => {
+    // baseMps 10. 골든 ×7 [0,30s], 포션 ×2 [0,60s], 구간 [0,60s].
+    // [0,30s] 둘 다 활성 → M=14, bonus += 10×13×30 = 3900
+    // [30s,60s] 포션만 → M=2, bonus += 10×1×30 = 300
+    // 합 4200
+    const bonus = productionBuffBonus(10, 0, 60_000, [
+      { startsAt: 0, endsAt: 30_000, mult: 7 },
+      { startsAt: 0, endsAt: 60_000, mult: 2 },
+    ])
+    expect(bonus).toBeCloseTo(4200, 6)
+  })
+
+  it('창이 구간 시작 이전부터라도 겹친 부분만 정산', () => {
+    // 버프 [−10s, 10s], 구간 [0, 30s] → 겹침 [0,10s] 10s → 10×1×10 = 100 (×2)
+    const bonus = productionBuffBonus(10, 0, 30_000, [
+      { startsAt: -10_000, endsAt: 10_000, mult: 2 },
+    ])
+    expect(bonus).toBeCloseTo(10 * 1 * 10, 6)
+  })
+
+  it('baseMps 0·역구간이면 0', () => {
+    expect(productionBuffBonus(0, 0, 30_000, [{ startsAt: 0, endsAt: 30_000, mult: 7 }])).toBe(0)
+    expect(productionBuffBonus(10, 30_000, 0, [{ startsAt: 0, endsAt: 30_000, mult: 7 }])).toBe(0)
   })
 })

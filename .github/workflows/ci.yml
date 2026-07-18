@@ -1,6 +1,6 @@
 name: CI
 
-# PR + main 외 브랜치 push 시 테스트·빌드로 회귀를 조기에 잡는다(D-2.9).
+# PR + main 외 브랜치 push 시 lint·테스트·빌드·E2E로 회귀를 조기에 잡는다(D-2.9 / E-4).
 # main push는 deploy.yml이 동일 검증 후 배포하므로 여기선 제외한다(중복 실행 방지).
 on:
   pull_request:
@@ -20,5 +20,22 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  # E2E 스모크(Playwright). 빌드 후 브라우저(chromium)를 설치하고 preview 대상으로 실행한다.
+  # test 통과 후에만 돌려 CI 시간을 아낀다. 브라우저는 CI에서 매번 새로 받는다(로컬 환경의 사전 설치와 별개).
+  e2e:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install chromium --with-deps
+      - run: npm run test:e2e

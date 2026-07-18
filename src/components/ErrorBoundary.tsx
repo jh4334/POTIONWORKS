@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { SAVE_KEY, SAVE_CORRUPT_KEY } from '../data/config.ts'
+import { STRINGS } from '../data/strings.ts'
 
 // D-1.2 최상위 에러 바운더리. 렌더 예외가 게임 전체를 백지로 만들지 않도록 폴백 UI를 보여준다.
 // 폴백은 스토어가 죽었을 수 있으므로 localStorage를 직접 읽는다(세이브 내보내기).
@@ -31,7 +32,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('[ErrorBoundary] 렌더 예외를 잡았습니다.', error, info)
+    console.error(STRINGS.log.errorBoundary.caught, error, info)
     // 스토어가 죽었을 수 있으니 세이브 문자열은 localStorage에서 직접 스냅샷한다.
     this.setState({ saveText: readRawSave() })
   }
@@ -58,15 +59,12 @@ export default class ErrorBoundary extends Component<Props, State> {
       <div className="modal-backdrop error-boundary-backdrop">
         <div className="modal" role="alertdialog" aria-modal="true" aria-labelledby="error-title">
           <h2 className="modal-title" id="error-title">
-            앗, 문제가 생겼어요 😢
+            {STRINGS.error.title}
           </h2>
-          <p className="modal-body">
-            화면을 그리는 중 오류가 발생했어요. 진행 데이터는 아래에 안전하게 남아 있어요 — 먼저
-            내보내기로 백업해 두는 걸 권장해요.
-          </p>
+          <p className="modal-body">{STRINGS.error.body}</p>
 
           <label className="modal-label" htmlFor="error-save">
-            현재 세이브(이 문자열을 보관하세요)
+            {STRINGS.error.saveLabel}
           </label>
           <textarea
             id="error-save"
@@ -74,19 +72,19 @@ export default class ErrorBoundary extends Component<Props, State> {
             readOnly
             rows={3}
             value={this.state.saveText}
-            placeholder="저장된 세이브가 없어요."
+            placeholder={STRINGS.error.savePlaceholder}
           />
 
           <div className="modal-actions">
             <button type="button" className="modal-button" onClick={this.handleHardReset}>
-              하드리셋
+              {STRINGS.error.hardReset}
             </button>
             <button
               type="button"
               className="modal-button modal-button--primary"
               onClick={this.handleReload}
             >
-              새로고침
+              {STRINGS.error.reload}
             </button>
           </div>
         </div>

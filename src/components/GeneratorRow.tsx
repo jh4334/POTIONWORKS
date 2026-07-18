@@ -12,6 +12,7 @@ import {
 } from '../engine/formulas.ts'
 import { formatNumber } from '../utils/format.ts'
 import { playDing } from '../engine/sound.ts'
+import { STRINGS } from '../data/strings.ts'
 
 interface Props {
   def: GeneratorDef
@@ -74,7 +75,7 @@ function GeneratorRow({ def, revealed }: Props) {
         <div className="generator-body">
           <div className="generator-name">???</div>
           <div className="generator-sub">
-            해금 비용 {formatNumber(generatorCost(def.baseCost, 0))} 💧
+            {STRINGS.generator.unlockCost(formatNumber(generatorCost(def.baseCost, 0)))}
           </div>
         </div>
       </div>
@@ -109,10 +110,10 @@ function GeneratorRow({ def, revealed }: Props) {
             {owned}
           </span>
         </div>
-        <div className="generator-sub">개당 {formatNumber(perUnit)}/s</div>
+        <div className="generator-sub">{STRINGS.generator.perUnit(formatNumber(perUnit))}</div>
         {owned > 0 && (
           <div className="generator-sub generator-total">
-            총 {formatNumber(genTotal)}/s (전체의 {formatPercent(percent)}%)
+            {STRINGS.generator.total(formatNumber(genTotal), formatPercent(percent))}
           </div>
         )}
       </div>
@@ -121,12 +122,12 @@ function GeneratorRow({ def, revealed }: Props) {
         className={`generator-buy${canAfford ? ' can-afford' : ''}`}
         onClick={handleBuy}
         aria-disabled={!canAfford}
-        aria-label={`${def.name} ×${displayCount} 구매, 비용 ${formatNumber(cost)} 마나`}
-        title={`구매 시 +${formatNumber(delta)}/s`}
+        aria-label={STRINGS.generator.buyAria(def.name, displayCount, formatNumber(cost))}
+        title={STRINGS.generator.buyDeltaTitle(formatNumber(delta))}
       >
         <span className="generator-buy-count">×{displayCount}</span>
         <span className="generator-buy-cost">{formatNumber(cost)} 💧</span>
-        <span className="generator-buy-delta">+{formatNumber(delta)}/s</span>
+        <span className="generator-buy-delta">{STRINGS.generator.delta(formatNumber(delta))}</span>
       </button>
     </div>
   )

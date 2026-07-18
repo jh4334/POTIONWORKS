@@ -8,6 +8,7 @@ import {
   importSave,
   loadFromLocalResult,
   saveToLocal,
+  slotKey,
   SAVE_VERSION,
   type SaveState,
 } from './save.ts'
@@ -15,18 +16,17 @@ import { GENERATORS } from '../data/generators.ts'
 import { UPGRADES } from '../data/upgrades.ts'
 import { ACHIEVEMENTS } from '../data/achievements.ts'
 import { STARDUST_UPGRADES } from '../data/stardustShop.ts'
+import { POTIONS } from '../data/potions.ts'
+import { CHALLENGES } from '../data/challenges.ts'
 import { useGameStore } from '../store/gameStore.ts'
-import {
-  SAVE_KEY,
-  SAVE_CORRUPT_KEY,
-  GENERATOR_MAX,
-  INITIAL_CLICK_POWER,
-} from '../data/config.ts'
+import { GENERATOR_MAX, INITIAL_CLICK_POWER, DEFAULT_VOLUME } from '../data/config.ts'
 
 const KNOWN_GEN = GENERATORS[0].id // 'apprentice'
 const KNOWN_UP = UPGRADES[0].id // 'apprentice-x2-10'
 const KNOWN_ACH = ACHIEVEMENTS[0].id // 'clicks-100'
 const KNOWN_STARDUST = STARDUST_UPGRADES[0].id // 'starting-apprentices'
+const KNOWN_POTION = POTIONS[0].id // 'vitality'
+const KNOWN_CHALLENGE = CHALLENGES[0].id // 'silent-hands'
 
 // 클린 픽스처(알려진 id만, 중복 없음) — 라운드트립이 정확히 일치하도록.
 function makeState(): SaveState {
@@ -46,11 +46,24 @@ function makeState(): SaveState {
     achievements: [KNOWN_ACH],
     totalClicks: 321,
     totalLifetimeMana: 98765.4,
-    muted: true,
+    volume: 0.3,
+    ambientOn: false,
+    numberNotation: 'comma',
+    effects: 'reduced',
+    fontScale: 1.15,
     playtimeMs: 123_456,
     stardustUpgrades: { [KNOWN_STARDUST]: 3 },
     deviceId: 'device-fixture-abc',
     saveCount: 17,
+    meteorsClicked: 9,
+    prestigeCancels: 2,
+    mutedPlaytimeMs: 654_321,
+    dragonVisits: 4,
+    brewing: { potionId: KNOWN_POTION, readyAt: 1_800_000 },
+    readyPotion: null,
+    potionsBrewed: 6,
+    activeChallenge: { id: KNOWN_CHALLENGE, startedAt: 1_650_000 },
+    completedChallenges: [CHALLENGES[1].id],
   }
 }
 
@@ -200,7 +213,7 @@ describe('migrate', () => {
     expect(out!.state.achievements).toEqual([])
     expect(out!.state.totalClicks).toBe(0)
     expect(out!.state.totalLifetimeMana).toBe(777) // 이번 생 누적을 총 누적 출발값으로
-    expect(out!.state.muted).toBe(false)
+    expect(out!.state.volume).toBe(DEFAULT_VOLUME) // v10 이전: muted 없음(false) → 기본 볼륨
   })
 
   it('v1→v3: totalLifetimeMana는 마이그레이션된 lifetimeMana(=mana)로', () => {
@@ -212,7 +225,7 @@ describe('migrate', () => {
     const out = migrate(v1)
     expect(out!.state.totalLifetimeMana).toBe(4200)
     expect(out!.state.achievements).toEqual([])
-    expect(out!.state.muted).toBe(false)
+    expect(out!.state.volume).toBe(DEFAULT_VOLUME)
   })
 
   it('v3 세이브는 업적/통계·음소거 필드를 그대로 채택(미지 업적 id는 제거)', () => {
@@ -239,7 +252,7 @@ describe('migrate', () => {
     expect(out!.state.achievements).toEqual([KNOWN_ACH]) // 미지 업적 제거
     expect(out!.state.totalClicks).toBe(42)
     expect(out!.state.totalLifetimeMana).toBe(123456)
-    expect(out!.state.muted).toBe(true)
+    expect(out!.state.volume).toBe(0) // v10 이전: muted true → 볼륨 0(음소거)
   })
 
   it('v3→v4: playtimeMs 필드가 없으면 0으로 초기화', () => {
@@ -343,6 +356,291 @@ describe('migrate', () => {
     expect(bad!.state.saveCount).toBe(0) // 음수 → 0
   })
 
+  it('v6→v7: 통계 카운터가 없으면 모두 0으로 초기화', () => {
+    const v6 = {
+      version: 6,
+      savedAt: FIXED_NOW,
+      state: { ...validState(), deviceId: 'dev-x', saveCount: 3 },
+    }
+    const out = migrate(v6)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 7로 승격
+    expect(out!.state.meteorsClicked).toBe(0)
+    expect(out!.state.prestigeCancels).toBe(0)
+    expect(out!.state.mutedPlaytimeMs).toBe(0)
+    expect(out!.state.dragonVisits).toBe(0)
+  })
+
+  it('v7 세이브는 통계 카운터를 채택(손상·음수·NaN은 0, 정수 카운터는 내림)', () => {
+    const ok = migrate({
+      version: 7,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        meteorsClicked: 12.9,
+        prestigeCancels: 5,
+        mutedPlaytimeMs: 777_777,
+        dragonVisits: 3,
+      },
+    })
+    expect(ok!.state.meteorsClicked).toBe(12) // 내림
+    expect(ok!.state.prestigeCancels).toBe(5)
+    expect(ok!.state.mutedPlaytimeMs).toBe(777_777)
+    expect(ok!.state.dragonVisits).toBe(3)
+    const bad = migrate({
+      version: 7,
+      savedAt: 1,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        meteorsClicked: -1,
+        prestigeCancels: NaN,
+        mutedPlaytimeMs: -5,
+        dragonVisits: 'x',
+      },
+    })
+    expect(bad!.state.meteorsClicked).toBe(0)
+    expect(bad!.state.prestigeCancels).toBe(0)
+    expect(bad!.state.mutedPlaytimeMs).toBe(0)
+    expect(bad!.state.dragonVisits).toBe(0)
+  })
+
+  it('v7→v8: 포션 조제 상태가 없으면 brewing=null, readyPotion=null, potionsBrewed=0', () => {
+    const v7 = {
+      version: 7,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        meteorsClicked: 1,
+        prestigeCancels: 0,
+        mutedPlaytimeMs: 0,
+        dragonVisits: 0,
+      },
+    }
+    const out = migrate(v7)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 8로 승격
+    expect(out!.state.brewing).toBeNull()
+    expect(out!.state.readyPotion).toBeNull()
+    expect(out!.state.potionsBrewed).toBe(0)
+  })
+
+  it('v8 세이브는 포션 조제 상태를 채택(미지 포션 id·손상 readyAt은 null로 떨군다)', () => {
+    const ok = migrate({
+      version: 8,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        brewing: { potionId: KNOWN_POTION, readyAt: 1_700_000_500_000 },
+        readyPotion: KNOWN_POTION,
+        potionsBrewed: 11.7,
+      },
+    })
+    expect(ok!.state.brewing).toEqual({ potionId: KNOWN_POTION, readyAt: 1_700_000_500_000 })
+    expect(ok!.state.readyPotion).toBe(KNOWN_POTION)
+    expect(ok!.state.potionsBrewed).toBe(11) // 내림
+    const bad = migrate({
+      version: 8,
+      savedAt: 1,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        brewing: { potionId: 'no-such-potion', readyAt: 5 }, // 미지 포션 → null
+        readyPotion: 'no-such-potion', // 미지 포션 → null
+        potionsBrewed: -3,
+      },
+    })
+    expect(bad!.state.brewing).toBeNull()
+    expect(bad!.state.readyPotion).toBeNull()
+    expect(bad!.state.potionsBrewed).toBe(0)
+    // brewing.readyAt이 비유한이면 전체 brewing을 null로(오염 방지).
+    const nanReady = migrate({
+      version: 8,
+      savedAt: 1,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        brewing: { potionId: KNOWN_POTION, readyAt: NaN },
+      },
+    })
+    expect(nanReady!.state.brewing).toBeNull()
+  })
+
+  it('v8→v9: 챌린지 상태가 없으면 activeChallenge=null, completedChallenges=[]', () => {
+    const v8 = {
+      version: 8,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        brewing: null,
+        readyPotion: null,
+        potionsBrewed: 0,
+      },
+    }
+    const out = migrate(v8)
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 9로 승격
+    expect(out!.state.activeChallenge).toBeNull()
+    expect(out!.state.completedChallenges).toEqual([])
+  })
+
+  it('v9 세이브는 챌린지 상태를 채택(미지 id·손상 startedAt은 떨군다)', () => {
+    const ok = migrate({
+      version: 9,
+      savedAt: FIXED_NOW,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        activeChallenge: { id: KNOWN_CHALLENGE, startedAt: 1_650_000 },
+        completedChallenges: [CHALLENGES[1].id, 'no-such-challenge'],
+      },
+    })
+    expect(ok!.state.activeChallenge).toEqual({ id: KNOWN_CHALLENGE, startedAt: 1_650_000 })
+    expect(ok!.state.completedChallenges).toEqual([CHALLENGES[1].id]) // 미지 id 제거
+    const bad = migrate({
+      version: 9,
+      savedAt: 1,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        activeChallenge: { id: 'no-such-challenge', startedAt: 5 }, // 미지 id → null
+        completedChallenges: 'nope',
+      },
+    })
+    expect(bad!.state.activeChallenge).toBeNull()
+    expect(bad!.state.completedChallenges).toEqual([])
+    // startedAt이 비유한이면 activeChallenge를 null로(오염 방지).
+    const nanStart = migrate({
+      version: 9,
+      savedAt: 1,
+      state: {
+        ...validState(),
+        deviceId: 'dev-x',
+        saveCount: 3,
+        activeChallenge: { id: KNOWN_CHALLENGE, startedAt: NaN },
+      },
+    })
+    expect(nanStart!.state.activeChallenge).toBeNull()
+  })
+
+  it('v9→v10: muted(불리언)를 volume으로 이전(true→0, false→기본) + 표시 설정 기본값', () => {
+    const base = {
+      ...validState(),
+      deviceId: 'dev-x',
+      saveCount: 3,
+      brewing: null,
+      readyPotion: null,
+      potionsBrewed: 0,
+      activeChallenge: null,
+      completedChallenges: [],
+    }
+    // muted true → volume 0(음소거)
+    const outMuted = migrate({ version: 9, savedAt: FIXED_NOW, state: { ...base, muted: true } })
+    expect(outMuted).not.toBeNull()
+    expect(outMuted!.version).toBe(SAVE_VERSION) // 10으로 승격
+    expect(outMuted!.state.volume).toBe(0)
+    // muted false → 기본 볼륨
+    const outUnmuted = migrate({ version: 9, savedAt: FIXED_NOW, state: { ...base, muted: false } })
+    expect(outUnmuted!.state.volume).toBe(DEFAULT_VOLUME)
+    // 표시 설정은 v10 이전엔 없으므로 기본값.
+    expect(outUnmuted!.state.numberNotation).toBe('suffix')
+    expect(outUnmuted!.state.effects).toBe('full')
+    expect(outUnmuted!.state.fontScale).toBe(1)
+  })
+
+  it('v10 세이브는 volume/표시 설정을 채택(volume 클램프, 잘못된 값은 기본)', () => {
+    const base = {
+      ...validState(),
+      deviceId: 'dev-x',
+      saveCount: 3,
+      brewing: null,
+      readyPotion: null,
+      potionsBrewed: 0,
+      activeChallenge: null,
+      completedChallenges: [],
+    }
+    const ok = migrate({
+      version: 10,
+      savedAt: FIXED_NOW,
+      state: { ...base, volume: 0.42, numberNotation: 'comma', effects: 'reduced', fontScale: 1.3 },
+    })
+    expect(ok!.state.volume).toBe(0.42)
+    expect(ok!.state.numberNotation).toBe('comma')
+    expect(ok!.state.effects).toBe('reduced')
+    expect(ok!.state.fontScale).toBe(1.3)
+    // 범위/오타 방어: volume은 0~1 클램프, 나머지는 알 수 없는 값이면 기본.
+    const bad = migrate({
+      version: 10,
+      savedAt: 1,
+      state: { ...base, volume: 9, numberNotation: 'weird', effects: 'x', fontScale: 99 },
+    })
+    expect(bad!.state.volume).toBe(1) // 클램프
+    expect(bad!.state.numberNotation).toBe('suffix')
+    expect(bad!.state.effects).toBe('full')
+    expect(bad!.state.fontScale).toBe(1)
+    // volume 누락/NaN → 기본
+    const missing = migrate({ version: 10, savedAt: 1, state: { ...base, volume: NaN } })
+    expect(missing!.state.volume).toBe(DEFAULT_VOLUME)
+  })
+
+  it('v10→v11: ambientOn 필드가 없으면 true(배경음 켜짐)로 초기화', () => {
+    const base = {
+      ...validState(),
+      deviceId: 'dev-x',
+      saveCount: 3,
+      brewing: null,
+      readyPotion: null,
+      potionsBrewed: 0,
+      activeChallenge: null,
+      completedChallenges: [],
+      volume: 0.5,
+      numberNotation: 'suffix',
+      effects: 'full',
+      fontScale: 1,
+    }
+    const out = migrate({ version: 10, savedAt: FIXED_NOW, state: base })
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(SAVE_VERSION) // 11로 승격
+    expect(out!.state.ambientOn).toBe(true)
+  })
+
+  it('v11 세이브는 ambientOn을 채택(false 유지, 손상값은 true 기본)', () => {
+    const base = {
+      ...validState(),
+      deviceId: 'dev-x',
+      saveCount: 3,
+      brewing: null,
+      readyPotion: null,
+      potionsBrewed: 0,
+      activeChallenge: null,
+      completedChallenges: [],
+      volume: 0.5,
+      numberNotation: 'suffix',
+      effects: 'full',
+      fontScale: 1,
+    }
+    const off = migrate({ version: 11, savedAt: FIXED_NOW, state: { ...base, ambientOn: false } })
+    expect(off!.state.ambientOn).toBe(false) // 명시적 false 유지
+    const on = migrate({ version: 11, savedAt: FIXED_NOW, state: { ...base, ambientOn: true } })
+    expect(on!.state.ambientOn).toBe(true)
+    // 손상(불리언 아님) → 기본 true.
+    const bad = migrate({ version: 11, savedAt: 1, state: { ...base, ambientOn: 'nope' } })
+    expect(bad!.state.ambientOn).toBe(true)
+  })
+
   it('v5 세이브는 stardustUpgrades를 채택(미지 id 제거·손상값 제거·maxLevel 클램프)', () => {
     // dreaming-cauldron maxLevel 5 → 99는 5로 클램프. starting-apprentices는 소수 내림.
     const out = migrate({
@@ -402,7 +700,7 @@ describe('migrate', () => {
     expect(out!.state.achievements).toEqual([])
     expect(out!.state.totalClicks).toBe(0)
     expect(out!.state.totalLifetimeMana).toBe(300) // lifetimeMana fallback
-    expect(out!.state.muted).toBe(false) // 'yes'는 boolean true가 아님
+    expect(out!.state.volume).toBe(DEFAULT_VOLUME) // 'yes'는 true가 아님 → muted false → 기본 볼륨
   })
 })
 
@@ -481,7 +779,11 @@ function installLocalStorage(): void {
       return map.size
     },
   }
-  Object.defineProperty(globalThis, 'localStorage', { value: stub, configurable: true, writable: true })
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: stub,
+    configurable: true,
+    writable: true,
+  })
 }
 
 describe('loadFromLocalResult 손상 보존(D-1.1)', () => {
@@ -495,20 +797,21 @@ describe('loadFromLocalResult 손상 보존(D-1.1)', () => {
   })
 
   it('정상 세이브면 ok + save', () => {
-    localStorage.setItem(SAVE_KEY, serialize(makeState(), FIXED_NOW))
+    // 활성 슬롯(기본 1) 키에 저장 — loadFromLocalResult는 활성 슬롯 키를 읽는다(E-3.2).
+    localStorage.setItem(slotKey(1), serialize(makeState(), FIXED_NOW))
     const res = loadFromLocalResult()
     expect(res.status).toBe('ok')
   })
 
   it('손상 세이브면 corrupt + 원본을 corrupt 키에 보존(초기화되지 않음)', () => {
     const rawCorrupt = '{broken json not valid'
-    localStorage.setItem(SAVE_KEY, rawCorrupt)
+    localStorage.setItem(slotKey(1), rawCorrupt)
     const res = loadFromLocalResult()
     expect(res.status).toBe('corrupt')
-    // 원본은 파괴되지 않고 손상 백업 키에 보존된다.
-    expect(localStorage.getItem(SAVE_CORRUPT_KEY)).toBe(rawCorrupt)
+    // 원본은 파괴되지 않고 활성 슬롯의 손상 백업 키에 보존된다.
+    expect(localStorage.getItem(`${slotKey(1)}-corrupt`)).toBe(rawCorrupt)
     // 원본 키도 여전히 그대로(덮어쓰지 않음).
-    expect(localStorage.getItem(SAVE_KEY)).toBe(rawCorrupt)
+    expect(localStorage.getItem(slotKey(1))).toBe(rawCorrupt)
   })
 })
 
@@ -519,15 +822,15 @@ describe('saveToLocal 유한성 가드(D-1.1)', () => {
   })
 
   it('비유한 수치가 있으면 저장을 스킵(마지막 정상 세이브 보호)', () => {
-    // 먼저 정상 세이브를 남긴다.
+    // 먼저 정상 세이브를 남긴다(활성 슬롯 키).
     saveToLocal(makeState(), FIXED_NOW)
-    const good = localStorage.getItem(SAVE_KEY)
+    const good = localStorage.getItem(slotKey(1))
     expect(good).not.toBeNull()
 
     // Infinity가 섞인 상태로 저장 시도 → 스킵되어 이전 정상 세이브가 유지된다.
     const broken: SaveState = { ...makeState(), mana: Infinity }
     saveToLocal(broken, FIXED_NOW + 1000)
-    expect(localStorage.getItem(SAVE_KEY)).toBe(good)
+    expect(localStorage.getItem(slotKey(1))).toBe(good)
   })
 })
 

@@ -74,6 +74,7 @@ export default function Modal({ title, onClose, children, wide }: Props) {
   }, [onClose])
 
   return createPortal(
+    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop는 클릭 외부 닫기 전용 — 실제 대화상자는 아래 role="dialog" 요소이며 ESC·포커스 트랩으로 접근성을 보장한다(D-2.1).
     <div
       className="modal-backdrop"
       onMouseDown={(e) => {

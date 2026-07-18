@@ -5,10 +5,13 @@ import {
   METEOR_MAX_INTERVAL_MS,
   METEOR_LIFETIME_MS,
 } from '../data/config.ts'
+import { pickGoldenEvent, type GoldenEventKind } from '../data/events.ts'
+import { STRINGS } from '../data/strings.ts'
 
-// D-4.6 골든 이벤트 유성. tick과 무관한 로컬 setTimeout으로 다음 출현을 예약(랜덤 3~8분).
-// 출현하면 좌→우 포물선으로 흐르는 ☄️(12초). 클릭하면 activateMeteorBuff(버프+토스트+버스트).
-// 놓치면(12초) 그냥 사라지고 다음 유성을 예약한다. reduced-motion 시엔 CSS가 이동 대신 페이드로
+// D-4.6 · E-1.4 골든 이벤트. tick과 무관한 로컬 setTimeout으로 다음 출현을 예약(랜덤 3~8분).
+// 출현하면 좌→우 포물선으로 흐르는 글리프(12초). 출현 시점에 3종(생산 버프/클릭 버프/드래곤) 중
+// 가중치로 한 종을 뽑아(pickGoldenEvent) 아이콘·발동 경로가 달라진다. 클릭하면 activateGoldenEvent.
+// 놓치면(12초) 그냥 사라지고 다음 이벤트를 예약한다. reduced-motion 시엔 CSS가 이동 대신 페이드로
 // 표시하되 12초 체류는 동일해 클릭 기회를 보존한다.
 // (진행/보상 계산은 여전히 타임스탬프가 진실 — 버프 발동/만료는 store가 now/tick으로 처리하고,
 //  여기 setTimeout은 순수 연출(출현 예약)에만 쓴다.)
@@ -22,10 +25,24 @@ function randomTop(): number {
   return 15 + Math.random() * 40
 }
 
-export default function Meteor() {
-  const activateMeteorBuff = useGameStore((s) => s.activateMeteorBuff)
+// 종류별 접근성 라벨(출현 글리프가 종류에 따라 달라진다).
+function ariaFor(kind: GoldenEventKind): string {
+  switch (kind) {
+    case 'production':
+      return STRINGS.goldenEvent.productionAria
+    case 'click':
+      return STRINGS.goldenEvent.clickAria
+    case 'dragon':
+      return STRINGS.goldenEvent.dragonAria
+  }
+}
+
+export default function GoldenEvent() {
+  const activateGoldenEvent = useGameStore((s) => s.activateGoldenEvent)
   const [visible, setVisible] = useState(false)
   const [top, setTop] = useState(30)
+  // 이번 출현의 종류·아이콘(출현 순간 확정). 클릭 시 이 종류로 발동한다.
+  const [event, setEvent] = useState(() => pickGoldenEvent(Math.random()))
   const spawnTimer = useRef<ReturnType<typeof setTimeout>>()
   const lifeTimer = useRef<ReturnType<typeof setTimeout>>()
   // 다음 출현 예약 함수를 ref에 노출 — 클릭 시에도 재예약할 수 있게 한다.
@@ -34,9 +51,10 @@ export default function Meteor() {
   useEffect(() => {
     const scheduleNext = () => {
       spawnTimer.current = setTimeout(() => {
+        setEvent(pickGoldenEvent(Math.random())) // 출현마다 종류 재추첨.
         setTop(randomTop())
         setVisible(true)
-        // 12초 체류 후 미클릭이면 소멸 + 다음 유성 예약.
+        // 12초 체류 후 미클릭이면 소멸 + 다음 이벤트 예약.
         lifeTimer.current = setTimeout(() => {
           setVisible(false)
           scheduleNext()
@@ -55,8 +73,8 @@ export default function Meteor() {
     if (!visible) return
     if (lifeTimer.current) clearTimeout(lifeTimer.current)
     setVisible(false)
-    activateMeteorBuff(Date.now()) // 버프 발동 + 획득 토스트 + 파티클 버스트(store)
-    scheduleRef.current() // 다음 유성 예약
+    activateGoldenEvent(event.kind, Date.now()) // 종류별 발동 + 토스트 + 파티클 버스트(store)
+    scheduleRef.current() // 다음 이벤트 예약
   }
 
   if (!visible) return null
@@ -66,10 +84,10 @@ export default function Meteor() {
       type="button"
       className="meteor"
       style={{ top: `${top}%` }}
-      aria-label="유성 — 클릭하면 마나 폭주 버프"
+      aria-label={ariaFor(event.kind)}
       onClick={handleClick}
     >
-      ☄️
+      {event.icon}
     </button>
   )
 }

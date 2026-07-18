@@ -1,6 +1,7 @@
 // 업그레이드 정의 (DESIGN.md §2.4). 규칙(CLAUDE.md): 게임 수치는 전부 data/*.
 // 효과는 데이터 기술식(discriminated union) — 해석은 engine/formulas.ts 순수 함수가 담당한다.
 import { GENERATORS, type GeneratorId } from './generators.ts'
+import { STRINGS } from './strings.ts'
 
 // 효과: 마일스톤 배율 / 클릭 강화 / 시너지.
 // 시설 참조 필드는 GeneratorId로 좁혀 존재하지 않는 id를 컴파일 단계에서 잡는다(D-5.1).
@@ -42,8 +43,8 @@ const MILESTONE_MULT = 2
 const MILESTONE_UPGRADES: UpgradeDef[] = GENERATORS.flatMap((g) =>
   MILESTONE_STAGES.map((stage) => ({
     id: `${g.id}-x2-${stage.minOwned}`,
-    name: `${g.name} 숙련 ${stage.minOwned}`,
-    desc: `${g.name} 생산 ×${MILESTONE_MULT}`,
+    name: STRINGS.upgrade.milestoneName(g.name, stage.minOwned),
+    desc: STRINGS.upgrade.milestoneDesc(g.name, MILESTONE_MULT),
     cost: Math.ceil(g.baseCost * stage.costMult),
     unlock: { kind: 'ownedCount', generatorId: g.id, minOwned: stage.minOwned },
     effect: { kind: 'generatorMult', generatorId: g.id, mult: MILESTONE_MULT },
@@ -108,7 +109,21 @@ const SYNERGY_UPGRADES: UpgradeDef[] = [
     desc: '허브 정원 1개당 마법진 생산 +0.5%',
     cost: 60_000,
     unlock: { kind: 'ownedCount', generatorId: 'herbGarden', minOwned: 25 },
-    effect: { kind: 'synergy', sourceId: 'herbGarden', targetId: 'runeCircle', percentPerSource: 0.5 },
+    effect: {
+      kind: 'synergy',
+      sourceId: 'herbGarden',
+      targetId: 'runeCircle',
+      percentPerSource: 0.5,
+    },
+  },
+  // T7~T8 시너지(E-1.1): 현자의 탑 1개당 시공 균열 생산 +2%. 후반 티어 교차 배율.
+  {
+    id: 'synergy-sageTower-riftGate',
+    name: '균열의 인도자',
+    desc: '현자의 탑 1개당 시공 균열 생산 +2%',
+    cost: 500_000_000,
+    unlock: { kind: 'ownedCount', generatorId: 'sageTower', minOwned: 10 },
+    effect: { kind: 'synergy', sourceId: 'sageTower', targetId: 'riftGate', percentPerSource: 2 },
   },
 ]
 
@@ -120,9 +135,7 @@ export const UPGRADES: UpgradeDef[] = [
 ]
 
 // id → 정의 조회용(스토어가 구매 id 목록을 정의로 해석할 때 사용).
-const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(
-  UPGRADES.map((u) => [u.id, u]),
-)
+const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(UPGRADES.map((u) => [u.id, u]))
 
 // 구매한 id 목록을 정의 배열로 해석. 알 수 없는 id는 무시(세이브 마이그레이션 안전).
 export function resolveUpgrades(ids: string[]): UpgradeDef[] {

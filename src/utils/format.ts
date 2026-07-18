@@ -34,7 +34,25 @@ function mantissaDecimals(mantissa: number): number {
   return 0
 }
 
-export function formatNumber(n: number): string {
+// 숫자 표기 방식(E-3.3). 'suffix'=1.23M(기본), 'comma'=1,230,000. 컴포넌트들이 formatNumber를
+// 인자 없이 직접 호출하므로, 모듈 전역 현재 표기를 두고 App이 스토어 값으로 setNotation 동기화한다
+// (스토어 구독과 분리된 표시 설정). 순수 함수 성격은 유지: notation을 명시적으로 넘기면 그 값을 쓴다.
+export type NumberNotation = 'suffix' | 'comma'
+let currentNotation: NumberNotation = 'suffix'
+export function setNotation(n: NumberNotation): void {
+  currentNotation = n
+}
+
+// comma 표기 상한. 이 이상은 자릿수가 과해 읽기 어려우므로 suffix로 폴백한다(하이브리드).
+const COMMA_MAX = 1e15
+
+// comma 표기: toLocaleString(en-US). 1000 미만 소수는 1자리, 그 이상은 정수 자리만.
+function formatComma(sign: string, abs: number): string {
+  const maximumFractionDigits = abs < 1000 && !Number.isInteger(abs) ? 1 : 0
+  return sign + abs.toLocaleString('en-US', { maximumFractionDigits })
+}
+
+export function formatNumber(n: number, notation: NumberNotation = currentNotation): string {
   // 안전 처리: NaN / ±Infinity 는 표시용 기호로.
   if (Number.isNaN(n)) return '0'
   if (n === Infinity) return '∞'
@@ -43,6 +61,9 @@ export function formatNumber(n: number): string {
 
   const sign = n < 0 ? '-' : ''
   const abs = Math.abs(n)
+
+  // comma 표기(1e15 미만): 천 단위 구분. 1e15 이상은 suffix로 폴백해 자릿수 폭주를 막는다.
+  if (notation === 'comma' && abs < COMMA_MAX) return formatComma(sign, abs)
 
   // 1000 미만: 정수는 그대로, 소수는 최대 1자리.
   if (abs < 1000) {

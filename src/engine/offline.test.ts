@@ -19,7 +19,7 @@ describe('offlineEarnings', () => {
   })
 
   it('효율은 50% — 100% 대비 절반', () => {
-    const full = (3600 * 10) // 1시간 100% 기준(초 × mps)
+    const full = 3600 * 10 // 1시간 100% 기준(초 × mps)
     expect(offlineEarnings(3600_000, 10)).toBeCloseTo(full * 0.5)
   })
 

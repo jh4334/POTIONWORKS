@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useGameStore } from '../store/gameStore.ts'
 import { ACHIEVEMENT_TOAST_MS, TOAST_MAX_VISIBLE } from '../data/config.ts'
+import { STRINGS } from '../data/strings.ts'
 import { playDing } from '../engine/sound.ts'
 
 // T6.1/T6.2 알림 토스트 — 우하단 세로 스택. 각 토스트는 3초 후 자동 소멸(개별 타이머).
@@ -37,8 +38,8 @@ function ToastItem({
     <div className="achievement-toast" role="status">
       <span className="achievement-toast-icon">{icon ?? '🏆'}</span>
       <div className="achievement-toast-body">
-        <div className="achievement-toast-title">{title ?? `업적 달성: ${name}`}</div>
-        <div className="achievement-toast-sub">{sub ?? '+1% 생산'}</div>
+        <div className="achievement-toast-title">{title ?? STRINGS.toast.achievement(name)}</div>
+        <div className="achievement-toast-sub">{sub ?? STRINGS.toast.achievementSub}</div>
       </div>
     </div>
   )

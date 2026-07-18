@@ -1,6 +1,7 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useGameStore, type BuyAmount } from '../store/gameStore.ts'
 import { GENERATORS } from '../data/generators.ts'
+import { STRINGS } from '../data/strings.ts'
 import GeneratorRow from './GeneratorRow.tsx'
 
 const BUY_OPTIONS: BuyAmount[] = [1, 10, 'max']
@@ -24,9 +25,14 @@ export default function GeneratorList() {
   return (
     <div className="generator-list">
       <div className="generator-list-head">
-        <h2 className="generator-list-title">생산 시설</h2>
+        <h2 className="generator-list-title">{STRINGS.generator.listTitle}</h2>
         {showBuyToggle && (
-          <div className="buy-amount-toggle" role="group" aria-label="구매 수량">
+          // biome-ignore lint/a11y/useSemanticElements: 버튼 묶음의 ARIA group 패턴 — fieldset로 바꾸면 레이아웃/스타일이 달라진다(의도된 role 사용).
+          <div
+            className="buy-amount-toggle"
+            role="group"
+            aria-label={STRINGS.generator.buyAmountAria}
+          >
             {BUY_OPTIONS.map((opt) => (
               <button
                 key={String(opt)}

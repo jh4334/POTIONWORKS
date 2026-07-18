@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useGameStore } from '../store/gameStore.ts'
 import { formatNumber } from '../utils/format.ts'
 import { ACHIEVEMENT_MULT_PER, STARDUST_MULT_PER } from '../data/config.ts'
+import { STRINGS } from '../data/strings.ts'
 import Modal from './Modal.tsx'
 
 // D-2.3 통계 패널. 누적/이번 생 마나·클릭·각성·스타더스트·현재 MPS·클릭당 획득·보너스 내역·플레이 시간.
@@ -18,10 +19,10 @@ function formatPlaytime(ms: number): string {
   const minutes = Math.floor((totalSec % 3600) / 60)
   const seconds = totalSec % 60
   const parts: string[] = []
-  if (days > 0) parts.push(`${days}일`)
-  if (hours > 0) parts.push(`${hours}시간`)
-  if (minutes > 0) parts.push(`${minutes}분`)
-  if (parts.length === 0) parts.push(`${seconds}초`)
+  if (days > 0) parts.push(STRINGS.duration.days(days))
+  if (hours > 0) parts.push(STRINGS.duration.hours(hours))
+  if (minutes > 0) parts.push(STRINGS.duration.minutes(minutes))
+  if (parts.length === 0) parts.push(STRINGS.duration.seconds(seconds))
   return parts.join(' ')
 }
 
@@ -46,6 +47,7 @@ export default function StatsModal({ onClose }: Props) {
       clickPower: st.clickPower,
       achievementCount: st.achievements.length,
       playtimeMs: st.playtimeMs,
+      potionsBrewed: st.potionsBrewed,
     })),
   )
 
@@ -53,27 +55,34 @@ export default function StatsModal({ onClose }: Props) {
   const stardustBonus = Math.round(s.stardust * STARDUST_MULT_PER * 100)
 
   return (
-    <Modal title="통계 📊" onClose={onClose}>
+    <Modal title={STRINGS.stats.title} onClose={onClose}>
       <div className="stats-grid">
-        <Row label="총 누적 마나" value={formatNumber(s.totalLifetimeMana)} />
-        <Row label="이번 생 누적 마나" value={formatNumber(s.lifetimeMana)} />
-        <Row label="총 클릭" value={formatNumber(s.totalClicks)} />
-        <Row label="각성 횟수" value={formatNumber(s.totalPrestiges)} />
-        <Row label="스타더스트" value={`✨ ${formatNumber(s.stardust)}`} />
-        <Row label="현재 초당 마나" value={formatNumber(s.mps)} />
-        <Row label="클릭당 획득" value={`+${formatNumber(s.clickPower)}`} />
-        <Row label="플레이 시간" value={formatPlaytime(s.playtimeMs)} />
+        <Row label={STRINGS.stats.totalLifetimeMana} value={formatNumber(s.totalLifetimeMana)} />
+        <Row label={STRINGS.stats.lifetimeMana} value={formatNumber(s.lifetimeMana)} />
+        <Row label={STRINGS.stats.totalClicks} value={formatNumber(s.totalClicks)} />
+        <Row label={STRINGS.stats.totalPrestiges} value={formatNumber(s.totalPrestiges)} />
+        <Row label={STRINGS.stats.stardust} value={`✨ ${formatNumber(s.stardust)}`} />
+        <Row label={STRINGS.stats.mps} value={formatNumber(s.mps)} />
+        <Row label={STRINGS.stats.clickPower} value={`+${formatNumber(s.clickPower)}`} />
+        <Row label={STRINGS.stats.playtime} value={formatPlaytime(s.playtimeMs)} />
+        <Row label={STRINGS.stats.potionsBrewed} value={formatNumber(s.potionsBrewed)} />
       </div>
 
-      <p className="stats-bonus-title">생산 보너스 내역</p>
+      <p className="stats-bonus-title">{STRINGS.stats.bonusTitle}</p>
       <div className="stats-grid">
-        <Row label={`업적 (${s.achievementCount}개)`} value={`+${achievementBonus}%`} />
-        <Row label={`스타더스트 (${formatNumber(s.stardust)}개)`} value={`+${stardustBonus}%`} />
+        <Row
+          label={STRINGS.stats.bonusAchievement(s.achievementCount)}
+          value={`+${achievementBonus}%`}
+        />
+        <Row
+          label={STRINGS.stats.bonusStardust(formatNumber(s.stardust))}
+          value={`+${stardustBonus}%`}
+        />
       </div>
 
       <div className="modal-actions">
         <button type="button" className="modal-button modal-button--primary" onClick={onClose}>
-          닫기
+          {STRINGS.common.close}
         </button>
       </div>
     </Modal>

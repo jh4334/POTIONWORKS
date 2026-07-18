@@ -1,18 +1,37 @@
 import { useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { hardResetAndReload } from '../engine/autosave.ts'
+import { FONT_SCALE_OPTIONS, DEFAULT_VOLUME } from '../data/config.ts'
+import { STRINGS } from '../data/strings.ts'
 import Modal from './Modal.tsx'
 
-// T8.2 설정 모달. 음소거 토글 / 세이브 백업 열기 / 하드리셋(2단계 확인) / 버전·크레딧.
-// 열림 상태는 부모(Header)의 로컬 상태. 백업은 기존 SaveModal을 재사용하므로 onOpenBackup으로 위임한다.
+// T8.2 설정 모달 + E-3.3 설정 확장(볼륨/숫자 표기/이펙트/글자 크기) + E-3.2 슬롯 변경.
+// 열림 상태는 부모(Header)의 로컬 상태. 백업은 기존 SaveModal 재사용(onOpenBackup),
+// 슬롯 변경은 App으로 위임(onChangeSlot: 현재 진행 저장 후 타이틀로).
 interface Props {
   onClose: () => void
   onOpenBackup: () => void
+  onChangeSlot: () => void
 }
 
-export default function SettingsModal({ onClose, onOpenBackup }: Props) {
-  const muted = useGameStore((s) => s.muted)
-  const toggleMuted = useGameStore((s) => s.toggleMuted)
+// 글자 크기 옵션 라벨(FONT_SCALE_OPTIONS와 1:1). 데이터는 수치, 표시 문자열은 strings.
+const FONT_LABELS = [
+  STRINGS.settings.fontSmall,
+  STRINGS.settings.fontMedium,
+  STRINGS.settings.fontLarge,
+]
+
+export default function SettingsModal({ onClose, onOpenBackup, onChangeSlot }: Props) {
+  const volume = useGameStore((s) => s.volume)
+  const setVolume = useGameStore((s) => s.setVolume)
+  const ambientOn = useGameStore((s) => s.ambientOn)
+  const setAmbientOn = useGameStore((s) => s.setAmbientOn)
+  const numberNotation = useGameStore((s) => s.numberNotation)
+  const setNumberNotation = useGameStore((s) => s.setNumberNotation)
+  const effects = useGameStore((s) => s.effects)
+  const setEffects = useGameStore((s) => s.setEffects)
+  const fontScale = useGameStore((s) => s.fontScale)
+  const setFontScale = useGameStore((s) => s.setFontScale)
 
   // 하드리셋 2단계 확인: 1차 클릭 → 경고 노출, 2차 클릭 → 실제 초기화 + 새로고침.
   const [confirmReset, setConfirmReset] = useState(false)
@@ -26,50 +45,151 @@ export default function SettingsModal({ onClose, onOpenBackup }: Props) {
     hardResetAndReload()
   }
 
+  // 음소거 체크: 볼륨을 0으로(음소거) 또는 기본값으로 되돌린다(슬라이더 위치 복원).
+  const muted = volume === 0
+
   return (
-    <Modal title="설정 ⚙️" onClose={onClose}>
+    <Modal title={STRINGS.settings.title} onClose={onClose}>
+      {/* 볼륨 슬라이더 + 음소거 체크 */}
       <div className="settings-row">
-        <span className="settings-row-label">사운드</span>
-        <button type="button" className="modal-button" onClick={toggleMuted}>
-          {muted ? '🔇 음소거됨' : '🔊 켜짐'}
+        <span className="settings-row-label">{STRINGS.settings.volume}</span>
+        <div className="settings-volume">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(volume * 100)}
+            onChange={(e) => setVolume(Number(e.target.value) / 100)}
+            aria-label={STRINGS.settings.volume}
+          />
+          <span className="settings-volume-value">
+            {STRINGS.settings.volumeValue(Math.round(volume * 100))}
+          </span>
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={muted}
+              onChange={(e) => setVolume(e.target.checked ? 0 : DEFAULT_VOLUME)}
+            />
+            {STRINGS.settings.mute}
+          </label>
+        </div>
+      </div>
+
+      {/* 배경음(앰비언트) 토글 — 효과음 볼륨과 독립(E-4.4). */}
+      <div className="settings-row">
+        <span className="settings-row-label">{STRINGS.settings.ambient}</span>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={ambientOn}
+            onChange={(e) => setAmbientOn(e.target.checked)}
+          />
+          {STRINGS.settings.ambientOn}
+        </label>
+      </div>
+
+      {/* 숫자 표기 전환 */}
+      <div className="settings-row">
+        <span className="settings-row-label">{STRINGS.settings.notation}</span>
+        <div className="settings-segment">
+          <button
+            type="button"
+            className={`modal-button${numberNotation === 'suffix' ? ' modal-button--primary' : ''}`}
+            onClick={() => setNumberNotation('suffix')}
+          >
+            {STRINGS.settings.notationSuffix}
+          </button>
+          <button
+            type="button"
+            className={`modal-button${numberNotation === 'comma' ? ' modal-button--primary' : ''}`}
+            onClick={() => setNumberNotation('comma')}
+          >
+            {STRINGS.settings.notationComma}
+          </button>
+        </div>
+      </div>
+
+      {/* 이펙트 강도 */}
+      <div className="settings-row">
+        <span className="settings-row-label">{STRINGS.settings.effects}</span>
+        <div className="settings-segment">
+          <button
+            type="button"
+            className={`modal-button${effects === 'full' ? ' modal-button--primary' : ''}`}
+            onClick={() => setEffects('full')}
+          >
+            {STRINGS.settings.effectsFull}
+          </button>
+          <button
+            type="button"
+            className={`modal-button${effects === 'reduced' ? ' modal-button--primary' : ''}`}
+            onClick={() => setEffects('reduced')}
+          >
+            {STRINGS.settings.effectsReduced}
+          </button>
+        </div>
+      </div>
+
+      {/* 글자 크기 */}
+      <div className="settings-row">
+        <span className="settings-row-label">{STRINGS.settings.fontScale}</span>
+        <div className="settings-segment">
+          {FONT_SCALE_OPTIONS.map((scale, i) => (
+            <button
+              key={scale}
+              type="button"
+              className={`modal-button${fontScale === scale ? ' modal-button--primary' : ''}`}
+              onClick={() => setFontScale(scale)}
+            >
+              {FONT_LABELS[i]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 슬롯 변경 */}
+      <div className="settings-row">
+        <span className="settings-row-label">{STRINGS.settings.slot}</span>
+        <button type="button" className="modal-button" onClick={onChangeSlot}>
+          {STRINGS.settings.slotChange}
         </button>
       </div>
 
       <div className="settings-row">
-        <span className="settings-row-label">세이브 백업</span>
+        <span className="settings-row-label">{STRINGS.settings.backup}</span>
         <button type="button" className="modal-button" onClick={onOpenBackup}>
-          내보내기 / 불러오기
+          {STRINGS.settings.backupButton}
         </button>
       </div>
 
       <div className="settings-row">
-        <span className="settings-row-label">진행 초기화</span>
+        <span className="settings-row-label">{STRINGS.settings.reset}</span>
         <button
           type="button"
           className={`modal-button${confirmReset ? ' modal-button--danger' : ''}`}
           onClick={handleReset}
         >
-          {confirmReset ? '정말요? 되돌릴 수 없어요' : '하드 리셋'}
+          {confirmReset ? STRINGS.settings.resetConfirm : STRINGS.settings.resetButton}
         </button>
       </div>
       {confirmReset && (
         <p className="modal-sub settings-reset-warn">
-          모든 진행(마나·시설·업그레이드·각성·업적)이 삭제됩니다. 초기화 전에 백업 내보내기를 권장해요.
-          한 번 더 누르면 초기화 후 새로고침돼요.{' '}
+          {STRINGS.settings.resetWarn}{' '}
           <button type="button" className="settings-link" onClick={() => setConfirmReset(false)}>
-            취소
+            {STRINGS.common.cancel}
           </button>
         </p>
       )}
 
       <div className="settings-footer">
         <span className="settings-version">POTIONWORKS v{__APP_VERSION__}</span>
-        <span className="settings-credit">🧪 포션 공방 방치형 · 만든이 POTIONWORKS</span>
+        <span className="settings-credit">{STRINGS.settings.credit}</span>
       </div>
 
       <div className="modal-actions">
         <button type="button" className="modal-button modal-button--primary" onClick={onClose}>
-          닫기
+          {STRINGS.common.close}
         </button>
       </div>
     </Modal>

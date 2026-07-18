@@ -11,7 +11,7 @@ export const TICK_INTERVAL_MS = 100
 export const SAVE_KEY = 'potionworks-save'
 // 손상된 세이브 백업 키(D-1 세이브 파괴 방지). deserialize/migrate 실패 시 원본 raw를 여기 보존한다.
 // 최신 1개만 유지 — 초기화되지 않았음을 사용자에게 보여주고 수동 복구를 가능케 한다.
-export const SAVE_CORRUPT_KEY = SAVE_KEY + '-corrupt'
+export const SAVE_CORRUPT_KEY = `${SAVE_KEY}-corrupt`
 // 자동저장 주기(ms). DESIGN.md §3: 10초 자동저장. tick 루프와는 별도 인터벌.
 export const AUTOSAVE_INTERVAL_MS = 10_000
 // 기기 식별자 저장 키(D-5.3). 세이브 키와 별개로 영속 — 각성/하드리셋/세이브 교체와 무관하게 이 기기를 식별한다.
@@ -24,6 +24,20 @@ export const SAVE_DEBOUNCE_MS = 1_000
 // generators 보유수 상한(세이브 정규화용). Infinity 연쇄로 세이브가 오염되는 것을 차단하는 방어 클램프.
 // 정상 플레이로는 도달 불가능한 큰 값(1e12).
 export const GENERATOR_MAX = 1e12
+
+// --- 세이브 슬롯 (E-3.2) ---
+// 슬롯 개수(3개). 슬롯 키는 `${SLOT_KEY_PREFIX}${n}`(n=1..COUNT).
+export const SAVE_SLOT_COUNT = 3
+// 슬롯별 localStorage 키 접두사. 기존 단일 키(SAVE_KEY)는 최초 1회 슬롯 1로 이전된다(무손실).
+export const SLOT_KEY_PREFIX = 'potionworks-save-slot'
+// 활성 슬롯 번호 저장 키. 없으면 1번이 활성(기본).
+export const ACTIVE_SLOT_KEY = 'potionworks-active-slot'
+
+// --- 설정 확장 (E-3.3) ---
+// 볼륨 기본값(0~1). muted가 없던 세이브(v9 이하)에서 muted=false → 이 값, muted=true → 0으로 이전.
+export const DEFAULT_VOLUME = 0.7
+// 글자 크기(UI 배율) 선택지. html zoom으로 적용해 px 기반 스타일도 함께 확대된다(접근성).
+export const FONT_SCALE_OPTIONS = [1, 1.15, 1.3] as const
 
 // --- 오프라인 수익 (T4.3, DESIGN.md §2.6) ---
 // 오프라인 인정 시간 상한(ms). 아무리 오래 비워도 이 시간까지만 지급한다(8시간).
@@ -74,6 +88,18 @@ export const METEOR_MIN_INTERVAL_MS = 3 * 60_000
 export const METEOR_MAX_INTERVAL_MS = 8 * 60_000
 // 유성이 화면에 체류하는 시간(ms). 이 안에 클릭하지 못하면 그냥 사라진다.
 export const METEOR_LIFETIME_MS = 12_000
-// 유성 클릭 시 버프 배율과 지속시간(ms). 생산(MPS)에 곱해진다.
+// 유성(생산 버프) 클릭 시 버프 배율과 지속시간(ms). 생산(MPS)에 곱해진다.
 export const METEOR_BUFF_MULT = 7
 export const METEOR_BUFF_DURATION_MS = 30_000
+
+// --- 골든 이벤트 확장 (E-1.4) ---
+// 출현 시 3종 중 가중치로 1종을 뽑는다(data/events.ts pickGoldenEvent). 합은 임의(비율로만 의미).
+export const GOLDEN_EVENT_WEIGHTS = { production: 60, click: 25, dragon: 15 } as const
+// 마나 폭풍(클릭 버프): 30초간 클릭 파워 ×10. 생산 버프와 종류가 달라 공존한다.
+export const CLICK_BUFF_MULT = 10
+export const CLICK_BUFF_DURATION_MS = 30_000
+// 늙은 드래곤 방문: 버프가 아니라 현재 MPS × 이 초(10분치)를 즉시 지급한다.
+export const DRAGON_GRANT_SECONDS = 600
+// 솥 연타 콤보 판정 창(ms). 이 시간 안에 이어 클릭하면 콤보가 누적된다(숨겨진 업적 '폭풍 젓기').
+// 클릭 액션이 타임스탬프로 판정 — UI(ClickerPanel)의 표시용 콤보와 별개의 상태 진실이다.
+export const CLICK_COMBO_WINDOW_MS = 1_000

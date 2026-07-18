@@ -7,6 +7,8 @@
 //   새로운 상태 변형 로직을 두지 않는다. addMana만 전용 액션(debugAddMana)을 사용한다.
 import { useGameStore } from '../store/gameStore.ts'
 import { hardResetAndReload } from '../engine/autosave.ts'
+import { pickGoldenEvent, type GoldenEventKind } from '../data/events.ts'
+import { STRINGS } from '../data/strings.ts'
 
 interface Cheats {
   // 마나 +n (누적 마나 통계도 함께). 각성 도달 등 상태 진행에 사용.
@@ -16,7 +18,10 @@ interface Cheats {
   // 시간 시뮬: lastTick 기준 hours시간 뒤 시각으로 tick 호출.
   //   탭 방치와 동일 경로(경과시간 × MPS 적립) — 마나가 대략 MPS × hours × 3600 만큼 늘어난다.
   simulate: (hours: number) => void
-  // 유성 버프 즉시 발동(D-4.6 검증용) — 실제 유성 클릭과 동일 경로(activateMeteorBuff).
+  // 골든 이벤트 즉시 발동(D-4.6·E-1.4 검증용) — 실제 이벤트 클릭과 동일 경로(activateGoldenEvent).
+  //   kind 미지정이면 가중치로 랜덤 선택. kind: 'production' | 'click' | 'dragon'.
+  event: (kind?: GoldenEventKind) => void
+  // 하위호환 별칭 — event('production')과 동일(생산 버프).
   meteor: () => void
   // 하드리셋(세이브 삭제 + 초기 상태).
   reset: () => void
@@ -35,9 +40,13 @@ const cheats: Cheats = {
     // 진실은 타임스탬프: lastTick 대비 경과시간만큼만 적립되므로 미래 시각을 넘긴다.
     s.tick(s.lastTick + hours * 3600_000)
   },
+  event(kind) {
+    // 실제 이벤트 클릭과 동일: 종류별 발동 + 토스트 + 버스트. 만료는 tick이 판정한다.
+    const k = kind ?? pickGoldenEvent(Math.random()).kind
+    useGameStore.getState().activateGoldenEvent(k, Date.now())
+  },
   meteor() {
-    // 유성 클릭과 동일: 버프 발동 + 토스트 + 버스트. 만료는 tick이 판정한다.
-    useGameStore.getState().activateMeteorBuff(Date.now())
+    useGameStore.getState().activateGoldenEvent('production', Date.now())
   },
   reset() {
     // 하드리셋 표준 경로(자동저장 정지 → clearSave → reload). 경합으로 세이브가 되살아나지 않게 한다.
@@ -52,6 +61,4 @@ declare global {
 }
 
 window.cheats = cheats
-console.info(
-  '[cheats] window.cheats 활성화 — addMana(n) · x1000() · simulate(hours) · meteor() · reset()',
-)
+console.info(STRINGS.log.cheats.enabled)

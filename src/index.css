@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  font-family: system-ui, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   --bg: #1a1425;
   --panel: #251c36;
   --border: #3d2f57;
@@ -34,7 +34,7 @@ input,
 /* 인터랙티브 요소: 더블탭 확대·지연 없이 즉시 반응(touch-action), 탭 하이라이트 제거. */
 button,
 a,
-[role='button'] {
+[role="button"] {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
@@ -212,7 +212,9 @@ a,
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
-  transition: border-color 0.1s ease, background 0.1s ease;
+  transition:
+    border-color 0.1s ease,
+    background 0.1s ease;
 }
 
 .modal-button:hover:not(:disabled) {
@@ -300,7 +302,10 @@ a,
   font-size: 22px;
   font-weight: 800;
   color: #eafff8;
-  text-shadow: 0 0 3px #10202a, 0 0 6px #10202a, 0 2px 4px rgba(0, 0, 0, 0.75),
+  text-shadow:
+    0 0 3px #10202a,
+    0 0 6px #10202a,
+    0 2px 4px rgba(0, 0, 0, 0.75),
     0 0 12px rgba(120, 255, 214, 0.5);
   animation: click-pop-rise 0.8s ease-out forwards;
   will-change: transform, opacity;
@@ -346,7 +351,9 @@ a,
   border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
-  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+  transition:
+    border-color 0.1s ease,
+    box-shadow 0.1s ease;
 }
 
 .upgrade-card:disabled {
@@ -402,7 +409,9 @@ a,
   border-radius: 10px;
   cursor: pointer;
   box-shadow: 0 0 14px rgba(255, 200, 90, 0.5);
-  transition: filter 0.1s ease, transform 0.05s ease;
+  transition:
+    filter 0.1s ease,
+    transform 0.05s ease;
 }
 
 .prestige-button:hover {
@@ -504,6 +513,286 @@ a,
   margin-bottom: 0;
 }
 
+/* E-2.2 챌린지 — 진행 중 배지(각성 패널 상단). */
+.challenge-badge {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid #b98bff;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(160, 120, 255, 0.25);
+}
+
+.challenge-badge-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.challenge-badge-icon {
+  font-size: 16px;
+}
+
+.challenge-badge-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.challenge-badge-timer {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: #c9a9ff;
+}
+
+.challenge-abandon {
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.challenge-abandon.confirm {
+  color: #ffb4b4;
+  border-color: #a24a4a;
+}
+
+/* E-2.2 챌린지 선택(각성 확인 모달). */
+.challenge-picker {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.challenge-picker-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.challenge-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.challenge-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.1s ease;
+}
+
+.challenge-option:hover:not(:disabled) {
+  border-color: #b98bff;
+}
+
+.challenge-option.selected {
+  border-color: #b98bff;
+  box-shadow: 0 0 8px rgba(160, 120, 255, 0.3);
+}
+
+.challenge-option.done {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.challenge-option-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.challenge-option-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c9a9ff;
+}
+
+/* E-2.2 금욕의 공방 진행 중 업그레이드 패널 안내. */
+.upgrade-blocked {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* E-1.2 포션 조제 패널 — 클릭 패널 하단, 각성 패널 위. */
+.brewing-panel {
+  width: 220px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+
+.brewing-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.potion-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.potion-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "icon name cost"
+    "icon desc time";
+  align-items: center;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    border-color 0.1s ease,
+    box-shadow 0.1s ease;
+}
+
+.potion-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.potion-card-icon {
+  grid-area: icon;
+  font-size: 22px;
+}
+
+.potion-card-name {
+  grid-area: name;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.potion-card-desc {
+  grid-area: desc;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.potion-card-cost {
+  grid-area: cost;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: right;
+}
+
+.potion-card-time {
+  grid-area: time;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+/* 구매 가능 하이라이트 — 기존 can-afford 패턴과 동일 감각. */
+.potion-card.can-afford {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(169, 112, 255, 0.45);
+}
+
+.potion-card.can-afford:hover {
+  filter: brightness(1.08);
+}
+
+/* 조제 중 — 진행 바 + "조제 중: {포션명}". */
+.brewing-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.brewing-progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.brewing-progress-remaining {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.brewing-progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.brewing-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7ad0ff, #a970ff);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* 완성 — 반짝이는 수확 버튼(can-afford pulse 재사용). */
+.potion-collect {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f4ecff;
+  background: linear-gradient(135deg, #a970ff, #7ad0ff);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    filter 0.1s ease,
+    transform 0.05s ease;
+}
+
+.potion-collect.can-afford {
+  animation: afford-pulse 1.4s ease-in-out infinite;
+}
+
+.potion-collect:hover {
+  filter: brightness(1.08);
+}
+
+.potion-collect:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .potion-collect.can-afford {
+    animation: none;
+  }
+}
+
 /* D-3.1 스타더스트 상점 카드 그리드. */
 .stardust-cards {
   display: grid;
@@ -523,7 +812,9 @@ a,
   border: 1px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
-  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+  transition:
+    border-color 0.1s ease,
+    box-shadow 0.1s ease;
 }
 
 .stardust-card:disabled {
@@ -573,6 +864,18 @@ a,
 .stardust-card.can-afford {
   border-color: #ffd76a;
   box-shadow: 0 0 10px rgba(255, 215, 106, 0.35);
+}
+
+/* E-2.1 스타더스트 상점 섹션(기본/생산/자동화). */
+.stardust-section {
+  margin-top: 4px;
+}
+
+.stardust-section-title {
+  margin: 16px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
 }
 
 .generator-list-head {
@@ -673,7 +976,9 @@ a,
   border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
-  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+  transition:
+    border-color 0.1s ease,
+    box-shadow 0.1s ease;
 }
 
 .generator-buy:disabled {
@@ -761,7 +1066,9 @@ a,
   background: linear-gradient(135deg, #2f2547, var(--panel));
   border: 1px solid #ffd76a;
   border-radius: 10px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 12px rgba(255, 200, 90, 0.25);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.45),
+    0 0 12px rgba(255, 200, 90, 0.25);
   animation: toast-in 0.28s ease-out;
 }
 
@@ -1105,11 +1412,11 @@ a,
 }
 
 /* D-2.8 구매 불가(aria-disabled) — disabled 룩 유지하되 가격 숫자 색은 낮추지 않는다(대비 유지). */
-.generator-buy[aria-disabled='true'] {
+.generator-buy[aria-disabled="true"] {
   cursor: not-allowed;
 }
 
-.generator-buy[aria-disabled='true'] .generator-buy-delta {
+.generator-buy[aria-disabled="true"] .generator-buy-delta {
   color: var(--text-dim);
 }
 
@@ -1255,7 +1562,9 @@ a,
 
 /* D-4.2 10연타마다 솥 shake 1회(0.3s) — 글로우 루프와 동시 실행. */
 .cauldron-button.shake {
-  animation: cauldron-shake 0.3s ease-in-out, cauldron-glow 4s ease-in-out infinite;
+  animation:
+    cauldron-shake 0.3s ease-in-out,
+    cauldron-glow 4s ease-in-out infinite;
 }
 
 @keyframes cauldron-shake {
@@ -1304,7 +1613,11 @@ a,
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, rgba(210, 190, 255, 0.55), rgba(169, 112, 255, 0.12));
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(210, 190, 255, 0.55),
+    rgba(169, 112, 255, 0.12)
+  );
   animation: ambient-rise linear infinite;
   will-change: transform, opacity;
 }
@@ -1471,7 +1784,11 @@ a,
 .prestige-flash {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 45%, rgba(255, 216, 128, 0.85), rgba(255, 180, 72, 0) 60%);
+  background: radial-gradient(
+    circle at 50% 45%,
+    rgba(255, 216, 128, 0.85),
+    rgba(255, 180, 72, 0) 60%
+  );
   animation: prestige-flash 1.5s ease-in-out forwards;
 }
 
@@ -1597,4 +1914,169 @@ a,
       opacity: 1;
     }
   }
+}
+
+/* ============================================================
+   E-3.3 설정 확장 — 볼륨 슬라이더 / 세그먼트 토글.
+   ============================================================ */
+.settings-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settings-volume input[type="range"] {
+  flex: 1 1 90px;
+  min-width: 80px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.settings-volume-value {
+  min-width: 40px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.settings-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+/* 숫자 표기·이펙트·글자 크기 세그먼트 토글(작은 버튼들). */
+.settings-segment {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settings-segment .modal-button {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* ============================================================
+   E-3.2 슬롯 선택 화면.
+   ============================================================ */
+.slot-select-card {
+  max-width: 520px;
+  width: 100%;
+}
+
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 20px 0;
+  text-align: left;
+}
+
+.slot-card {
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.slot-card--active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.slot-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.slot-card-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.slot-card-active {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.slot-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+  min-height: 18px;
+}
+
+.slot-card-body--empty {
+  color: var(--text-dim);
+}
+
+.slot-card-line {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.slot-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 타이틀 보조 버튼(슬롯 선택 / 뒤로 / 이어하기 보조). */
+.title-secondary {
+  margin-top: 10px;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.1s ease;
+}
+
+.title-secondary:hover {
+  border-color: var(--accent);
+}
+
+/* ============================================================
+   E-3.3 이펙트 강도 'reduced' — prefers-reduced-motion과 동일 처리(html[data-effects='reduced']).
+   OS 설정과 무관하게 사용자가 선택하면 D-4 연출을 끈다(위 reduced-motion 블록들의 미러).
+   ============================================================ */
+html[data-effects="reduced"] .cauldron-emoji,
+html[data-effects="reduced"] .cauldron-button,
+html[data-effects="reduced"] .cauldron-button.shake,
+html[data-effects="reduced"] .ambient-bubble,
+html[data-effects="reduced"] .generator-row.buy-flash,
+html[data-effects="reduced"] .generator-owned.bump,
+html[data-effects="reduced"] .header-mana.mana-drop,
+html[data-effects="reduced"] .meteor-badge,
+html[data-effects="reduced"] .potion-collect.can-afford,
+html[data-effects="reduced"] .generator-buy.can-afford,
+html[data-effects="reduced"] .upgrade-card.can-afford {
+  animation: none;
+}
+
+html[data-effects="reduced"] .prestige-sequence,
+html[data-effects="reduced"] .burst-layer {
+  display: none;
+}
+
+/* 유성: 이동 애니메이션 대신 중앙 상단에 정적으로 표시(클릭 기회는 보존 — JS가 수명 종료 시 제거). */
+html[data-effects="reduced"] .meteor {
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  animation: none;
+  opacity: 1;
 }
